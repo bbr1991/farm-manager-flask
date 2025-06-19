@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{# This now uses the new variables passed from app.py #}
+
+{% block content %}
+    {# This also uses the new variable for the heading #}
+    <h2 class="mb-4">{{ current_page_title }}</h2>
+
+    <!-- Add New Income Form -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Add New Income</h5>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('add_income') }}" method="POST">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="income_date" class="form-label">Date of Income</label>
+                        <input type="date" class="form-control" id="income_date" name="income_date" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="income_source" class="form-label">Source</label>
+                        <select class="form-select" id="income_source" name="income_source" required>
+                            <option selected disabled value="">Choose...</option>
+                            <option value="Crop Sales">Crop Sales</option>
+                            <option value="Eggs Sales">Eggs Sales</option>
+                            <option value="Livestock Sales">Livestock Sales</option>
+                            <option value="Other Farm Income">Other Farm Income</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="income_amount" class="form-label">Amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text">₦</span>
+                            <input type="number" class="form-control" id="income_amount" name="income_amount" placeholder="0.00" step="0.01" min="0" required>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label for="income_description" class="form-label">Description</label>
+                        <textarea class="form-control" id="income_description" name="income_description" rows="3" required></textarea>
+                    </div>
+                </div>
+                <hr class="my-4">
+                <button class="btn btn-success btn-lg" type="submit">Add Income</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Display Recorded Income -->
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <h5 class="mb-0">Recorded Income</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th scope="col">Date</th>
+                        <th scope="col">Source</th>
+                        <th scope="col">Description</th>
+                        <th scope="col" class="text-end">Amount</th>
+                        <th scope="col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if income_list %}
+                        {% for item in income_list %}
+                        <tr>
+                            <td>{{ item.date }}</td>      {# Use item.date #}
+                            <td>{{ item.source }}</td>
+                            <td>{{ item.description }}</td>
+                            <td class="text-end">
+                                ₦{{ '{:,.2f}'.format(item.amount | float) }}
+                            </td>
+                            <td>
+                                 <a href="{{ url_for('edit_income', income_id=item.id) }}" class="btn btn-sm btn-outline-warning me-2">Edit</a>
+                                <form action="{{ url_for('delete_income', income_id=item.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this income record?');" style="display: inline;">
+                                   <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                           </td>
+                       </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center">No income recorded yet.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %} {# This is the closing tag that was likely missing #}

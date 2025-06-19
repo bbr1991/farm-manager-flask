@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{# This now uses the new variables passed from app.py #}
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - {{ page_title_tag }}{% endblock %}
+
+{% block content %}
+    {# This also uses the new variable for the heading #}
+    <h2 class="mb-4">{{ current_page_title }}</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header"><h5 class="mb-0">Update Income Details</h5></div>
+        <div class="card-body">
+            <form action="{{ url_for('update_income', income_id=income.id) }}" method="POST">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="income_date" class="form-label">Date of Income</label>
+                        {# Use income.date to match our new class attribute #}
+                        <input type="date" class="form-control" id="income_date" name="income_date" value="{{ income.date }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="income_source" class="form-label">Source</label>
+                        <select class="form-select" id="income_source" name="income_source" required>
+                            <option value="Crop Sales" {% if income.source == 'Crop Sales' %}selected{% endif %}>Crop Sales</option>
+                            <option value="Eggs Sales" {% if income.source == 'Eggs Sales' %}selected{% endif %}>Eggs Sales</option>
+                            <option value="Livestock Sales" {% if income.source == 'Livestock Sales' %}selected{% endif %}>Livestock Sales</option>
+                            <option value="Other Farm Income" {% if income.source == 'Other Farm Income' %}selected{% endif %}>Other Farm Income</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="income_amount" class="form-label">Amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text">₦</span>
+                            <input type="number" class="form-control" id="income_amount" name="income_amount" value="{{ income.amount }}" step="0.01" min="0" required>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label for="income_description" class="form-label">Description</label>
+                        <textarea class="form-control" id="income_description" name="income_description" rows="3" required>{{ income.description }}</textarea>
+                    </div>
+                </div>
+                <hr class="my-4">
+                <button class="btn btn-primary btn-lg" type="submit">Update Income</button>
+                <a href="{{ url_for('income') }}" class="btn btn-secondary btn-lg">Cancel</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}

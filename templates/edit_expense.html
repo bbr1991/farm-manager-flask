@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{# This now uses the new variables passed from app.py #}
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - {{ page_title_tag }}{% endblock %}
+
+{% block content %}
+    {# This also uses the new variable for the heading #}
+    <h2 class="mb-4">{{ current_page_title }}</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header"><h5 class="mb-0">Update Expense Details</h5></div>
+        <div class="card-body">
+            <form action="{{ url_for('update_expense', expense_id=expense.id) }}" method="POST">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="expense_date" class="form-label">Date of Expense</label>
+                        {# IMPORTANT CHANGE: Use expense.date to match the class attribute #}
+                        <input type="date" class="form-control" id="expense_date" name="expense_date" value="{{ expense.date }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="expense_category" class="form-label">Category</label>
+                        <select class="form-select" id="expense_category" name="expense_category" required>
+                            <option value="Feed" {% if expense.category == 'Feed' %}selected{% endif %}>Feed</option>
+                            <option value="Veterinary" {% if expense.category == 'Veterinary' %}selected{% endif %}>Veterinary & Medical</option>
+                            <option value="Repairs" {% if expense.category == 'Repairs' %}selected{% endif %}>Repairs & Maintenance</option>
+                            <option value="Fuel" {% if expense.category == 'Fuel' %}selected{% endif %}>Fuel</option>
+                            <option value="Utilities" {% if expense.category == 'Utilities' %}selected{% endif %}>Utilities</option>
+                            <option value="Other" {% if expense.category == 'Other' %}selected{% endif %}>Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="expense_amount" class="form-label">Amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text">₦</span>
+                            <input type="number" class="form-control" id="expense_amount" name="expense_amount" value="{{ expense.amount }}" step="0.01" min="0" required>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label for="expense_description" class="form-label">Description</label>
+                        <textarea class="form-control" id="expense_description" name="expense_description" rows="3" required>{{ expense.description }}</textarea>
+                    </div>
+                </div>
+                <hr class="my-4">
+                <button class="btn btn-primary btn-lg" type="submit">Update Expense</button>
+                <a href="{{ url_for('expenses') }}" class="btn btn-secondary btn-lg">Cancel</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}

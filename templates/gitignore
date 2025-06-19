@@ -1,0 +1,15 @@
+# Virtual Environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# SQLite Database
+# We often ignore the database file because it contains private data
+# and the schema can be recreated with init_db.py
+*.db
+
+# IDE / Editor specific files
+.vscode/
+.idea/

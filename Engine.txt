@@ -1,0 +1,22 @@
+python app.py
+python init_db.py
+python user_info.py
+python tuple_practice.py
+python dictionary_examples.py
+python set_examples.py
+python function_examples.py
+python module_example.py
+python my_greetings.py
+python main_program.py
+python file_handling_examples.py
+python exception_examples.py
+python dash_Board.py
+python datatypes_practice.py
+python user_info_app.py
+python rollercoaster.py
+python todo_list.py
+python contact_card.py
+python rollercoaster_functions.py
+python safe_calculator.py
+venv\Scripts\activate
+python -m venv venv

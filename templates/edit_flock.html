@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{# This now uses the new variables passed from app.py #}
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - {{ page_title_tag }}{% endblock %}
+
+{% block content %}
+    {# This also uses the new variable for the heading #}
+    <h2 class="mb-4">{{ current_page_title }}</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Update Flock Details</h5>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('update_flock', flock_id=flock.id) }}" method="POST">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="flock_name" class="form-label">Flock Name / Identifier</label>
+                        {# IMPORTANT: Use flock.name to match the class attribute #}
+                        <input type="text" class="form-control" id="flock_name" name="flock_name" value="{{ flock.name }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="breed" class="form-label">Breed</label>
+                        <input type="text" class="form-control" id="breed" name="breed" value="{{ flock.breed }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="acquisition_date" class="form-label">Acquisition Date</label>
+                        {# IMPORTANT: Use flock.acq_date to match the class attribute #}
+                        <input type="date" class="form-control" id="acquisition_date" name="acquisition_date" value="{{ flock.acq_date }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="initial_quantity" class="form-label">Initial Number of Birds</label>
+                        {# IMPORTANT: Use flock.quantity to match the class attribute #}
+                        <input type="number" class="form-control" id="initial_quantity" name="initial_quantity" value="{{ flock.quantity }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="status" class="form-label">Status</label>
+                        <select class="form-select" id="status" name="status" required>
+                            <option value="Active" {% if flock.status == 'Active' %}selected{% endif %}>Active</option>
+                            <option value="Sold" {% if flock.status == 'Sold' %}selected{% endif %}>Sold</option>
+                            <option value="Archived" {% if flock.status == 'Archived' %}selected{% endif %}>Archived</option>
+                        </select>
+                    </div>
+                </div>
+                <hr class="my-4">
+                <button class="btn btn-primary btn-lg" type="submit">Update Flock</button>
+                <a href="{{ url_for('poultry') }}" class="btn btn-secondary btn-lg">Cancel</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}

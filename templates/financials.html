@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{# This now uses the new variables passed from app.py #}
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - {{ page_title_tag }}{% endblock %}
+
+{% block content %}
+    {# This also uses the new variable for the heading #}
+    <h2 class="mb-3">{{ current_page_title }}</h2>
+    
+    <p>Manage your farm's income and expenses. Select an option below to view details.</p>
+    
+    <div class="row mt-4">
+        <div class="col-md-6 mb-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Income Records</h5>
+                    <p class="card-text">View and manage all sources of farm income.</p>
+                    <a href="{{ url_for('income') }}" class="btn btn-success">Go to Income</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Expense Records</h5>
+                    <p class="card-text">Track and categorize all farm expenses.</p>
+                    <a href="{{ url_for('expenses') }}" class="btn btn-danger">Go to Expenses</a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

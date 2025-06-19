@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{# The title block now uses 'user.farm_name' and 'page_title_tag' #}
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - {{ page_title_tag }}{% endblock %}
+
+{% block content %}
+    <div class="p-4 p-md-5 mb-4 rounded text-bg-primary">
+        <div class="col-md-8 px-0">
+            {# The welcome message is now dynamic #}
+            <h1 class="display-5 fst-italic">Welcome to the {{ current_page_title }}</h1>
+            <p class="lead my-3">A complete overview of your farm's performance and operations.</p>
+        </div>
+    </div>
+
+    <!-- Financial Summary Row (This section is already perfect) -->
+    <div class="row mb-4 text-center">
+        <h3 class="mb-3">Financial Summary</h3>
+        <div class="col-md-4">
+            <div class="card text-white bg-success shadow">
+                <div class="card-header">Total Income</div>
+                <div class="card-body">
+                    <h4 class="card-title">₦{{ '{:,.2f}'.format(stats.total_income) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-danger shadow">
+                <div class="card-header">Total Expenses</div>
+                <div class="card-body">
+                    <h4 class="card-title">₦{{ '{:,.2f}'.format(stats.total_expenses) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-info shadow">
+                <div class="card-header">Net Profit</div>
+                <div class="card-body">
+                    <h4 class="card-title">₦{{ '{:,.2f}'.format(stats.net_profit) }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Poultry Summary Row (This section is also perfect) -->
+    <div class="row mb-4 text-center">
+        <h3 class="mb-3">Poultry Summary</h3>
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-header">Total Active Birds</div>
+                <div class="card-body">
+                    <h4 class="card-title">{{ stats.total_active_birds }}</h4>
+                    <small class="text-muted">Birds</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-header">Eggs Collected Today</div>
+                <div class="card-body">
+                    <h4 class="card-title">{{ stats.eggs_today }}</h4>
+                    <small class="text-muted">Eggs</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-header">Eggs - Last 7 Days</div>
+                <div class="card-body">
+                    <h4 class="card-title">{{ stats.eggs_last_7_days }}</h4>
+                    <small class="text-muted">Eggs</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions Row (This section is also perfect) -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    Quick Actions
+                </div>
+                <div class="card-body">
+                    <a href="{{ url_for('income') }}" class="btn btn-success me-2">Manage Income</a>
+                    <a href="{{ url_for('expenses') }}" class="btn btn-danger me-2">Manage Expenses</a>
+                    <a href="{{ url_for('inventory') }}" class="btn btn-secondary me-2">Manage Inventory</a>
+                    <a href="{{ url_for('poultry') }}" class="btn btn-info">Manage Poultry</a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

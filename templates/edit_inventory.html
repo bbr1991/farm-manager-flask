@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - {{ page_title_tag }}{% endblock %}
+
+{% block content %}
+    <h2 class="mb-4">{{ current_page_title }}</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Update Inventory Item</h5>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('update_inventory_item', item_id=item.id) }}" method="POST">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="item_name" class="form-label">Item Name</label>
+                        <input type="text" class="form-control" id="item_name" name="name" value="{{ item.name }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="item_category" class="form-label">Category</label>
+                        <select class="form-select" id="item_category" name="category" required>
+                            <option value="Feed" {% if item.category == 'Feed' %}selected{% endif %}>Feed</option>
+                            <option value="Medicine" {% if item.category == 'Medicine' %}selected{% endif %}>Medicine/Vaccine</option>
+                            <option value="Equipment" {% if item.category == 'Equipment' %}selected{% endif %}>Equipment</option>
+                            <option value="Tool" {% if item.category == 'Tool' %}selected{% endif %}>Tool</option>
+                            <option value="Other" {% if item.category == 'Other' %}selected{% endif %}>Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="item_quantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="item_quantity" name="quantity" value="{{ item.quantity }}" step="any" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="item_unit" class="form-label">Unit</label>
+                        <input type="text" class="form-control" id="item_unit" name="unit" value="{{ item.unit }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="item_expiry" class="form-label">Expiry Date (Optional)</label>
+                        <input type="date" class="form-control" id="item_expiry" name="expiry_date" value="{{ item.expiry_date or '' }}">
+                    </div>
+                </div>
+                <hr class="my-4">
+                <button class="btn btn-primary btn-lg" type="submit">Update Item</button>
+                <a href="{{ url_for('inventory') }}" class="btn btn-secondary btn-lg">Cancel</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}
