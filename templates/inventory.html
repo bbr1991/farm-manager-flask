@@ -1,95 +1,228 @@
 {% extends "base.html" %}
-
-{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - {{ page_title_tag }}{% endblock %}
+{% block title %}Inventory Management{% endblock %}
 
 {% block content %}
-    <h2 class="mb-4">{{ current_page_title }}</h2>
-
-    <!-- Add New Inventory Item Form -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">Add New Inventory Item</h5>
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Inventory Management</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <!-- This button opens the modal to add a brand new item type -->
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addItemModal">
+                <i class="bi bi-plus-circle-fill"></i> Add New Item Type
+            </button>
         </div>
-        <div class="card-body">
-            <!-- This form will point to a route we will create next -->
-            <form action="{{ url_for('add_inventory_item') }}" method="POST">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label for="item_name" class="form-label">Item Name</label>
-                        <input type="text" class="form-control" id="item_name" name="name" placeholder="e.g., Starter Feed" required>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="item_category" class="form-label">Category</label>
-                        <select class="form-select" id="item_category" name="category" required>
-                            <option selected disabled value="">Choose...</option>
-                            <option value="Feed">Feed</option>
-                            <option value="Medicine">Medicine/Vaccine</option>
-                            <option value="Equipment">Equipment</option>
-                            <option value="Tool">Tool</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label for="item_quantity" class="form-label">Quantity</label>
-                        <input type="number" class="form-control" id="item_quantity" name="quantity" placeholder="0" step="any" required>
-                    </div>
-                    <div class="col-md-4">
-                        <label for="item_unit" class="form-label">Unit</label>
-                        <input type="text" class="form-control" id="item_unit" name="unit" placeholder="e.g., kg, bags, units" required>
-                    </div>
-                    <div class="col-md-4">
-                        <label for="item_expiry" class="form-label">Expiry Date (Optional)</label>
-                        <input type="date" class="form-control" id="item_expiry" name="expiry_date">
+    </div>
+
+    <!-- KPI (Key Performance Indicator) Stats Cards -->
+    <div class="row">
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Inventory Value</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.total_value) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-stack fs-2 text-gray-300"></i></div>
                     </div>
                 </div>
-                <hr class="my-4">
-                <button class="btn btn-primary btn-lg" type="submit">Add Item</button>
-            </form>
+            </div>
+        </div>
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Items Low on Stock</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.low_stock_count }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-exclamation-triangle-fill fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Items Expiring Soon</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.expiring_soon_count }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-calendar-x fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Display Recorded Inventory Items -->
-    <div class="card shadow-sm">
-        <div class="card-header">
-            <h5 class="mb-0">Current Inventory</h5>
+    <!-- Current Inventory Table -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Current Inventory Status</h6>
         </div>
         <div class="card-body">
-            <table class="table table-striped table-hover">
-                <thead>
-                    <tr>
-                        <th scope="col">Name</th>
-                        <th scope="col">Category</th>
-                        <th scope="col">Quantity</th>
-                        <th scope="col">Expiry Date</th>
-                        <th scope="col">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% if inventory_list %}
-                        {% for item in inventory_list %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
                         <tr>
-                            <td>{{ item.name }}</td>
+                            <th>Name</th>
+                            <th>Category</th>
+                            <th class="text-center">Current Stock</th>
+                            <th>Expiry Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in inventory_list %}
+                        <tr class="{% if item.is_low_stock %}table-warning{% elif item.is_expiring_soon %}table-danger{% endif %}">
+                            <td>
+                                <strong>{{ item.name }}</strong>
+                                {% if item.is_low_stock %}<span class="badge bg-warning ms-2">Low Stock</span>{% endif %}
+                                {% if item.is_expiring_soon %}<span class="badge bg-danger ms-2">Expiring</span>{% endif %}
+                            </td>
                             <td>{{ item.category }}</td>
-                            <td>{{ item.quantity }} {{ item.unit }}</td>
+                            <td class="text-center">{{ item.quantity }} {{ item.unit }}</td>
                             <td>{{ item.expiry_date if item.expiry_date else 'N/A' }}</td>
                             <td>
-                                <a href="{{ url_for('edit_inventory_item', item_id=item.id) }}" class="btn btn-sm btn-outline-warning me-2">Edit</a>
-    
-    <form action="{{ url_for('delete_inventory_item', item_id=item.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this item?');" style="display: inline;">
-        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-    </form>
-</td>
-                                <!-- Edit and Delete buttons will go here later -->
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addStockModal" data-bs-item-id="{{ item.id }}" data-bs-item-name="{{ item.name }}"><i class="bi bi-plus-lg"></i> Add Stock</button>
+                                    <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#logUsageModal" data-bs-item-id="{{ item.id }}" data-bs-item-name="{{ item.name }}"><i class="bi bi-dash-lg"></i> Log Usage</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" title="Edit Item"
+    data-bs-toggle="modal" 
+    data-bs-target="#editInventoryModal"
+    data-bs-id="{{ item.id }}"
+    data-bs-name="{{ item.name }}"
+    data-bs-category="{{ item.category }}"
+    data-bs-quantity="{{ item.quantity }}"
+    data-bs-unit="{{ item.unit }}"
+    data-bs-expiry="{{ item.expiry_date or '' }}">
+    <i class="bi bi-pencil"></i>
+</button>
+                                </div>
                             </td>
                         </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted">No inventory items found. Add one to get started.</td></tr>
                         {% endfor %}
-                    {% else %}
-                        <tr>
-                            <td colspan="5" class="text-center">No inventory items recorded yet.</td>
-                        </tr>
-                    {% endif %}
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
+
+    <!-- =================================================================== -->
+    <!-- MODALS FOR FORMS -->
+    <!-- =================================================================== -->
+
+    <!-- 1. Add New Item Type Modal -->
+    <div class="modal fade" id="addItemModal" tabindex="-1" aria-labelledby="addItemModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addItemModalLabel">Add New Inventory Item Type</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form action="{{ url_for('add_inventory_item') }}" method="POST">
+                        <div class="row g-3">
+                            <div class="col-md-6"><label for="name" class="form-label">Item Name</label><input type="text" class="form-control" name="name" required></div>
+                            <div class="col-md-6"><label for="category" class="form-label">Category</label><select class="form-select" name="category" required><option selected disabled value="">Choose...</option><option>Feed</option><option>Medicine</option><option>Equipment</option><option>Produce</option><option>Other</option></select></div>
+                            <div class="col-md-4"><label for="quantity" class="form-label">Initial Quantity</label><input type="number" class="form-control" name="quantity" value="0" step="any" required></div>
+                            <div class="col-md-4"><label for="unit" class="form-label">Unit (e.g., kg, bags)</label><input type="text" class="form-control" name="unit" required></div>
+                            <div class="col-md-4"><label for="low_stock_threshold" class="form-label">Low Stock Alert Level</label><input type="number" class="form-control" name="low_stock_threshold" value="10" step="any" required></div>
+                            <div class="col-md-6"><label for="unit_cost" class="form-label">Purchase Cost per Unit (₦)</label><input type="number" class="form-control" name="unit_cost" value="0" step="0.01"></div>
+                            <div class="col-md-6"><label for="expiry_date" class="form-label">Expiry Date (Optional)</label><input type="date" class="form-control" name="expiry_date"></div>
+                            <div class="col-md-6"><label class="form-label">Purchase Cost/Unit (₦)</label><input type="number" class="form-control" name="unit_cost" value="0" step="0.01"></div>
+                            <div class="col-md-6"><label class="form-label">Sale Price/Unit (₦)</label><input type="number" class="form-control" name="sale_price" value="0" step="0.01"></div>
+                            <div class="col-12"><label class="form-label">Expiry Date (Optional)</label><input type="date" class="form-control" name="expiry_date"></div>
+                        </div>
+                        <hr class="my-4"><button class="btn btn-primary" type="submit">Save New Item</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Add Stock Modal -->
+    <div class="modal fade" id="addStockModal" tabindex="-1" aria-labelledby="addStockModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title" id="addStockModalLabel">Add Stock for: <span id="addStockItemName"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-body">
+                    <form action="{{ url_for('add_inventory_stock') }}" method="POST">
+                        <input type="hidden" name="inventory_item_id" id="addStockItemId">
+                        <div class="mb-3"><label for="quantity_added" class="form-label">Quantity Added</label><input type="number" class="form-control" name="quantity_added" step="any" required></div>
+                        <div class="mb-3"><label for="purchase_date" class="form-label">Date of Purchase</label><input type="date" class="form-control" name="purchase_date" required></div>
+                        <button type="submit" class="btn btn-success">Add to Stock</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Log Usage Modal -->
+    <div class="modal fade" id="logUsageModal" tabindex="-1" aria-labelledby="logUsageModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title" id="logUsageModalLabel">Log Usage for: <span id="logUsageItemName"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-body">
+                    <form action="{{ url_for('log_inventory_usage') }}" method="POST">
+                        <input type="hidden" name="inventory_item_id" id="logUsageItemId">
+                        <div class="mb-3"><label for="quantity_used" class="form-label">Quantity Used</label><input type="number" class="form-control" name="quantity_used" step="any" required></div>
+                        <div class="mb-3"><label for="log_date" class="form-label">Date of Use</label><input type="date" class="form-control" name="log_date" required></div>
+                        <button type="submit" class="btn btn-warning">Log Usage</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block head_styles %}
+<style>
+    .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
+    .border-left-warning { border-left: 0.25rem solid #f6c23e !important; }
+    .border-left-danger { border-left: 0.25rem solid #e74a3b !important; }
+    .text-xs { font-size: .9rem; }
+    .text-gray-300 { color: #dddfeb !important; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // --- Set default dates for date inputs ---
+    const today = new Date().toISOString().split('T')[0];
+    document.querySelectorAll('input[type="date"]').forEach(input => {
+        if (!input.value) { input.value = today; }
+    });
+
+    // --- Logic to handle passing data to modals ---
+    const addStockModal = document.getElementById('addStockModal');
+    addStockModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget; // Button that triggered the modal
+        const itemId = button.getAttribute('data-bs-item-id');
+        const itemName = button.getAttribute('data-bs-item-name');
+        
+        // Update the modal's content.
+        const modalTitle = addStockModal.querySelector('#addStockItemName');
+        const modalInput = addStockModal.querySelector('#addStockItemId');
+        modalTitle.textContent = itemName;
+        modalInput.value = itemId;
+    });
+
+    const logUsageModal = document.getElementById('logUsageModal');
+    logUsageModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const itemId = button.getAttribute('data-bs-item-id');
+        const itemName = button.getAttribute('data-bs-item-name');
+        
+        const modalTitle = logUsageModal.querySelector('#logUsageItemName');
+        const modalInput = logUsageModal.querySelector('#logUsageItemId');
+        modalTitle.textContent = itemName;
+        modalInput.value = itemId;
+    });
+});
+</script>
 {% endblock %}

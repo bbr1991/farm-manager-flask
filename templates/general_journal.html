@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}General Journal{% endblock %}
+
+{% block content %}
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">General Journal</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <button class="btn btn-outline-secondary me-2" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+                <i class="bi bi-funnel-fill"></i> Filter Journal
+            </button>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newEntryModal">
+                <i class="bi bi-plus-circle-fill"></i> New Manual Entry
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter Form (Collapsible) -->
+    <div class="collapse" id="filterCollapse">
+        <div class="card card-body mb-4 shadow-sm">
+            <form method="GET" action="{{ url_for('general_journal') }}">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3"><label class="form-label">Start Date</label><input type="date" class="form-control" name="start_date" value="{{ request.args.get('start_date', '') }}"></div>
+                    <div class="col-md-3"><label class="form-label">End Date</label><input type="date" class="form-control" name="end_date" value="{{ request.args.get('end_date', '') }}"></div>
+                    <div class="col-md-4"><label class="form-label">Search Description</label><input type="text" class="form-control" name="q" placeholder="e.g., Purchase of feed" value="{{ request.args.get('q', '') }}"></div>
+                    <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Apply Filter</button></div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Journal Entries Table -->
+    <div class="card shadow">
+        <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Journal Entries</h6></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Debit Account</th>
+                            <th>Credit Account</th>
+                            <th class="text-end">Amount</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in entries %}
+                        <tr>
+                            <td>{{ entry.transaction_date }}</td>
+                            <td>{{ entry.description }}</td>
+                            <td><a href="{{ url_for('account_ledger', account_id=entry.debit_account_id) }}">{{ entry.debit_account_name }}</a></td>
+                            <td><a href="{{ url_for('account_ledger', account_id=entry.credit_account_id) }}">{{ entry.credit_account_name }}</a></td>
+                            <td class="text-end">₦{{ '{:,.2f}'.format(entry.amount) }}</td>
+                            <td class="text-center">
+                                {# In a real app, you might have a "Reverse Entry" button here #}
+                                <a href="{{ url_for('account_ledger', account_id=entry.debit_account_id) }}" class="btn btn-sm btn-outline-info">View</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center text-muted py-4">No journal entries found for the selected criteria.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- MODAL FOR ADDING A NEW JOURNAL ENTRY -->
+    <!-- =================================================================== -->
+    <div class="modal fade" id="newEntryModal" tabindex="-1" aria-labelledby="newEntryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="newEntryModalLabel">Create New Manual Journal Entry</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form action="{{ url_for('add_journal_entry') }}" method="POST">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="transaction_date" class="form-label">Transaction Date</label>
+                                <input type="date" class="form-control" id="transaction_date" name="transaction_date" required>
+                            </div>
+                            <div class="col-md-8">
+                                <label for="amount" class="form-label">Amount (₦)</label>
+                                <input type="number" class="form-control" id="amount" name="amount" step="0.01" required>
+                            </div>
+                            <div class="col-12">
+                                <label for="description" class="form-label">Description</label>
+                                <textarea class="form-control" id="description" name="description" rows="2" required></textarea>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="debit_account_id" class="form-label">Account to Debit</label>
+                                <p class="small text-muted mb-1">(Increase Asset/Expense, Decrease Liability/Equity/Income)</p>
+                                <select class="form-select" id="debit_account_id" name="debit_account_id" required>
+                                    <option selected disabled value="">Choose account...</option>
+                                    {% for account in chart_of_accounts %}
+                                    <option value="{{ account.id }}">{{ account.name }} ({{ account.type }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="credit_account_id" class="form-label">Account to Credit</label>
+                                <p class="small text-muted mb-1">(Decrease Asset/Expense, Increase Liability/Equity/Income)</p>
+                                <select class="form-select" id="credit_account_id" name="credit_account_id" required>
+                                    <option selected disabled value="">Choose account...</option>
+                                    {% for account in chart_of_accounts %}
+                                    <option value="{{ account.id }}">{{ account.name }} ({{ account.type }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <hr class="my-4">
+                        <button class="btn btn-primary" type="submit">Save Journal Entry</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Set default date for new entry modal to today
+    document.querySelector('#newEntryModal input[name="transaction_date"]').valueAsDate = new Date();
+</script>
+{% endblock %}

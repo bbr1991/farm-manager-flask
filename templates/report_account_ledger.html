@@ -1,0 +1,64 @@
+{% extends "_report_base.html" %}
+
+{# Define the report's title #}
+{% set report_title = "Account Ledger" %}
+
+{# This block injects the "Select Account" dropdown into the filter bar #}
+{% block extra_filters %}
+<div class="col-md-5">
+    <label for="account_id" class="form-label">Select Account</label>
+    <select class="form-select" id="account_id" name="account_id" required>
+        <option disabled {% if not selected_account_id %}selected{% endif %} value="">Choose an account...</option>
+        {% for acc in accounts %}
+        <option value="{{ acc.id }}" {% if selected_account_id == acc.id %}selected{% endif %}>
+            {{ acc.name }} ({{ acc.type }})
+        </option>
+        {% endfor %}
+    </select>
+</div>
+{% endblock %}
+
+{# This block contains the actual report table #}
+{% block report_content %}
+    {# Only show the table if the data exists #}
+    {% if report_data %}
+        <h5 class="mb-3">Ledger for: <strong class="text-primary">{{ report_data.account.name }}</strong></h5>
+        <table class="table">
+            <thead class="table-light">
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th class="text-end">Debit (₦)</th>
+                    <th class="text-end">Credit (₦)</th>
+                    <th class="text-end">Balance (₦)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Opening Balance Row -->
+                <tr>
+                    <td colspan="4"><strong>Opening Balance as of {{ start_date }}</strong></td>
+                    <td class="text-end"><strong>{{ '{:,.2f}'.format(report_data.opening_balance) }}</strong></td>
+                </tr>
+                <!-- Transaction Rows -->
+                {% for row in report_data.rows %}
+                <tr>
+                    <td>{{ row.date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ row.description }}</td>
+                    <td class="text-end text-success">{% if row.debit > 0 %}{{ '{:,.2f}'.format(row.debit) }}{% endif %}</td>
+                    <td class="text-end text-danger">{% if row.credit > 0 %}{{ '{:,.2f}'.format(row.credit) }}{% endif %}</td>
+                    <td class="text-end">{{ '{:,.2f}'.format(row.balance) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="table-dark">
+                    <th colspan="4" class="text-end">Final Balance as of {{ end_date }}</th>
+                    <th class="text-end">₦{{ '{:,.2f}'.format(report_data.final_balance) }}</th>
+                </tr>
+            </tfoot>
+        </table>
+    {% else %}
+        {# This message shows if the user hasn't generated a report yet #}
+        <p class="text-center text-muted">Please select an account and date range to generate the ledger.</p>
+    {% endif %}
+{% endblock %}

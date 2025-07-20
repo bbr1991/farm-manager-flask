@@ -1,0 +1,203 @@
+/*
+ * ======================================================
+ * FarmApp Custom Stylesheet
+ * ======================================================
+ */
+
+:root {
+    /* Color Palette - Easy to change! */
+    --primary-green: #27ae60;
+    --dark-slate: #2c3e50;
+    --medium-slate: #34495e;
+    --light-slate: #4a6278;
+    --light-grey: #f4f7f6;
+    --text-muted-color: #95a5a6;
+    --text-light: #ecf0f1;
+    --white: #ffffff;
+    --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+body {
+    background-color: var(--light-grey);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.wrapper {
+    display: flex;
+    width: 100%;
+    align-items: stretch;
+}
+
+#content {
+    width: 100%;
+    padding: 20px;
+    min-height: 100vh;
+    transition: all 0.3s;
+}
+
+/* ======================================================
+ * Sidebar
+ * ====================================================== */
+#sidebar {
+    min-width: 250px;
+    max-width: 250px;
+    min-height: 100vh;
+    background: var(--dark-slate);
+    color: var(--text-light);
+    transition: all 0.3s;
+}
+
+#sidebar.active {
+    margin-left: -250px;
+}
+
+#sidebar .sidebar-header {
+    padding: 20px;
+    background: var(--medium-slate);
+    text-align: center;
+}
+
+#sidebar .sidebar-header h3 {
+    font-size: 1.5rem;
+    margin-bottom: 0;
+}
+
+/* Sidebar Menu Headers (Replaces the old <p> tag) */
+#sidebar .sidebar-menu-header {
+    padding: 10px 20px;
+    font-size: 0.8rem;
+    color: var(--text-muted-color);
+    text-transform: uppercase;
+    letter-spacing: .05rem;
+}
+
+#sidebar ul.components {
+    padding: 20px 0;
+}
+
+#sidebar ul li a {
+    padding: 12px 20px;
+    font-size: 1.1em;
+    display: block;
+    color: var(--text-light);
+    border-left: 4px solid transparent;
+    text-decoration: none;
+    transition: all 0.2s ease-in-out;
+}
+
+#sidebar ul li a:hover {
+    color: var(--white);
+    background: var(--medium-slate);
+    border-left: 4px solid var(--primary-green);
+}
+
+#sidebar ul li a.active {
+    color: var(--white);
+    background: var(--dark-slate);
+    border-left: 4px solid var(--primary-green);
+}
+
+#sidebar ul li a i {
+    margin-right: 12px;
+}
+
+#sidebar ul ul a {
+    font-size: 0.9em !important;
+    padding-left: 45px !important; /* Increased indent */
+    background: var(--medium-slate);
+}
+
+/* ======================================================
+ * Top Navigation Bar
+ * ====================================================== */
+.top-navbar {
+    padding: 15px 10px;
+    background: var(--white);
+    border: none;
+    border-radius: 8px; /* Softer radius */
+    margin-bottom: 20px;
+    box-shadow: 0 2px 5px var(--shadow-color);
+}
+
+/* Change sidebar toggle button color to match the theme */
+#sidebarCollapse.btn-info {
+    background-color: var(--medium-slate);
+    border: 1px solid var(--medium-slate);
+}
+#sidebarCollapse.btn-info:hover {
+    background-color: var(--dark-slate);
+    border: 1px solid var(--dark-slate);
+}
+
+
+/* ======================================================
+ * Media Queries
+ * ====================================================== */
+/* Mobile View */
+@media (max-width: 768px) {
+    #sidebar {
+        margin-left: -250px;
+    }
+    #sidebar.active {
+        margin-left: 0;
+    }
+}
+
+/* Print View */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    body,
+    #content {
+        background-color: var(--white);
+    }
+    .card,
+    .top-navbar {
+        border: none !important;
+        box-shadow: none !important;
+    }
+    .wrapper,
+    #content {
+        display: block;
+        padding: 0;
+    }
+}
+/*
+ * ======================================================
+ * Dashboard-Specific Styles
+ * ======================================================
+ */
+
+/* KPI Cards */
+.kpi-card {
+    border-left: 0.25rem solid;
+}
+.kpi-card--primary { border-left-color: var(--dark-slate); }
+.kpi-card--success { border-left-color: var(--primary-green); }
+.kpi-card--danger  { border-left-color: #e74a3b; } /* Keeping a distinct danger color */
+
+.kpi-card .text-xs { 
+    font-size: .9rem; 
+}
+.kpi-card .text-gray-300 { 
+    color: #e0e0e0 !important; /* A light grey for icons */
+}
+
+/* Card Header Styling */
+.card-header {
+    background-color: #f8f9fc; /* A very light grey */
+    border-bottom: 1px solid #e3e6f0;
+}
+.card-header .font-weight-bold {
+    color: var(--dark-slate);
+}
+
+/* Quick Actions List */
+.list-group-item-action i {
+    color: var(--medium-slate);
+    transition: color 0.2s;
+}
+.list-group-item-action:hover i {
+    color: var(--primary-green);
+}

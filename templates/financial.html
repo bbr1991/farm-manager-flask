@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Financial Center{% endblock %}
+
+{% block content %}
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Financial Center</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <a href="{{ url_for('new_expense') }}" class="btn btn-outline-danger me-2"><i class="bi bi-wallet2"></i> Add Expense</a>
+            <a href="{{ url_for('new_sale') }}" class="btn btn-outline-success"><i class="bi bi-cart-plus-fill"></i> New Sale (POS)</a>
+        </div>
+    </div>
+
+    <!-- KPI (Key Performance Indicator) Stats Cards -->
+    <div class="row">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Net Profit (Last 30 Days)</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.net_profit_30d) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-graph-up-arrow fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Income (Last 30 Days)</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.income_30d) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-arrow-down-circle fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Expenses (Last 30 Days)</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.expenses_30d) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-arrow-up-circle fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Accounts Receivable</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.accounts_receivable) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-journal-arrow-down fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Row (Chart, Transactions, and Actions) -->
+    <div class="row">
+        <!-- Left Column: Main Chart and Recent Transactions -->
+        <div class="col-lg-8">
+            <!-- Income vs. Expenses Chart -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Monthly Income vs. Expenses</h6></div>
+                <div class="card-body">
+                    <div class="chart-area" style="height: 320px;"><canvas id="financialBarChart"></canvas></div>
+                </div>
+            </div>
+
+            <!-- Recent Transactions Table -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Recent Transactions</h6></div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr><th>Date</th><th>Description</th><th>Type</th><th class="text-end">Amount</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for entry in recent_journal_entries %}
+                                <tr>
+                                    <td>{{ entry.date }}</td>
+                                    <td>{{ entry.description }}</td>
+                                    <td>
+                                        {% if entry.type == 'income' %}<span class="badge bg-success">Income</span>
+                                        {% elif entry.type == 'expense' %}<span class="badge bg-danger">Expense</span>
+                                        {% else %}<span class="badge bg-secondary">Journal</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">₦{{ '{:,.2f}'.format(entry.amount) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-muted">No transactions recorded yet.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Account Balances and Actions -->
+        <div class="col-lg-4">
+            <!-- Key Account Balances Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Key Account Balances</h6></div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        {% for account in key_accounts %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-wallet me-2"></i>{{ account.name }}</span>
+                            <span class="fw-bold">₦{{ '{:,.2f}'.format(account.balance) }}</span>
+                        </li>
+                        {% else %}
+                        <li class="list-group-item text-muted">No asset accounts found.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Financial Actions & Reports Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Actions & Reports</h6></div>
+                <div class="card-body">
+                    <div class="list-group">
+                        <a href="{{ url_for('chart_of_accounts') }}" class="list-group-item list-group-item-action"><i class="bi bi-list-columns-reverse me-2"></i>Chart of Accounts</a>
+                        <a href="{{ url_for('general_journal') }}" class="list-group-item list-group-item-action"><i class="bi bi-journal-text me-2"></i>General Journal</a>
+                        <a href="{{ url_for('reports_dashboard') }}" class="list-group-item list-group-item-action"><i class="bi bi-file-earmark-bar-graph-fill me-2"></i>View Financial Reports</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block head_styles %}
+<style>
+    .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
+    .border-left-success { border-left: 0.25rem solid #1cc88a !important; }
+    .border-left-danger { border-left: 0.25rem solid #e74a3b !important; }
+    .border-left-warning { border-left: 0.25rem solid #f6c23e !important; }
+    .text-xs { font-size: .9rem; }
+    .text-gray-300 { color: #dddfeb !important; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // This script will draw the financial bar chart
+    const financialLineData = {{ financial_chart_data | tojson }};
+
+    const financialCtx = document.getElementById('financialBarChart').getContext('2d');
+    new Chart(financialCtx, {
+        type: 'bar',
+        data: {
+            labels: financialLineData.map(item => item.month),
+            datasets: [
+                {
+                    label: 'Monthly Income',
+                    data: financialLineData.map(item => item.monthly_income),
+                    backgroundColor: 'rgba(28, 200, 138, 0.7)',
+                    borderColor: 'rgba(28, 200, 138, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Monthly Expenses',
+                    data: financialLineData.map(item => item.monthly_expenses),
+                    backgroundColor: 'rgba(231, 74, 59, 0.7)',
+                    borderColor: 'rgba(231, 74, 59, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: { 
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } },
+            plugins: { legend: { display: true, position: 'top' } } 
+        }
+    });
+});
+</script>
+{% endblock %}

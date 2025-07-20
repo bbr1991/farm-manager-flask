@@ -1,0 +1,92 @@
+{% extends "_report_base.html" %}
+
+{# Define the report's title #}
+{% set report_title = "Balance Sheet" %}
+
+{# This is the only part you need to write for the report's content! #}
+{% block report_content %}
+    {# Only show the report if the data has been generated from the backend #}
+    {% if data %}
+        <div class="row">
+            <!-- Left Side: Assets -->
+            <div class="col-md-6">
+                <h5 class="border-bottom pb-2 mb-3">Assets</h5>
+                <table class="table table-sm">
+                    <tbody>
+                        {% for account in data.asset_accounts %}
+                        <tr>
+                            <td>{{ account.name }}</td>
+                            <td class="text-end">₦{{ '{:,.2f}'.format(account.balance) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="2" class="text-muted">No assets with a balance.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-light fs-5">
+                            <th class="text-end">Total Assets</th>
+                            <th class="text-end">₦{{ '{:,.2f}'.format(data.total_assets) }}</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <!-- Right Side: Liabilities & Equity -->
+            <div class="col-md-6">
+                <h5 class="border-bottom pb-2 mb-3">Liabilities</h5>
+                <table class="table table-sm">
+                    <tbody>
+                        {% for account in data.liability_accounts %}
+                        <tr>
+                            <td>{{ account.name }}</td>
+                            <td class="text-end">₦{{ '{:,.2f}'.format(account.balance) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="2" class="text-muted">No liabilities with a balance.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                <h5 class="border-bottom pb-2 my-3">Equity</h5>
+                <table class="table table-sm">
+                    <tbody>
+                        {% for account in data.equity_accounts %}
+                        <tr>
+                            <td>{{ account.name }}</td>
+                            <td class="text-end">₦{{ '{:,.2f}'.format(account.balance) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="2" class="text-muted">No equity with a balance.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-light fs-5">
+                            <th class="text-end">Total Liabilities & Equity</th>
+                            <th class="text-end">₦{{ '{:,.2f}'.format(data.total_liabilities_and_equity) }}</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <hr>
+
+        {# This is the crucial balance check, now using the 'data' dictionary #}
+        {# We add 'no-print' because this is a system check, not part of the official report #}
+        <div class="no-print mt-3">
+            {% if (data.total_assets - data.total_liabilities_and_equity)|abs > 0.01 %}
+                <div class="alert alert-danger">
+                    <strong>Warning!</strong> The Balance Sheet is not in balance. Assets do not equal Liabilities + Equity.
+                </div>
+            {% else %}
+                <div class="alert alert-success">
+                    <strong>Success!</strong> The Balance Sheet is balanced.
+                </div>
+            {% endif %}
+        </div>
+
+    {% else %}
+        {# This message shows if the user hasn't generated a report yet #}
+        <p class="text-center text-muted">Please select a date and click "Generate" to view the Balance Sheet.</p>
+    {% endif %}
+{% endblock %}

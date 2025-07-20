@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% block title %}Water Management{% endblock %}
+
+{% block content %}
+    <!-- Page Header -->
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Water Management</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button class="btn btn-sm btn-info me-2" data-bs-toggle="modal" data-bs-target="#logMaterialModal">
+            <i class="bi bi-box-seam"></i> Log Material Usage
+        </button>
+        
+        <!-- THIS IS THE BUTTON THAT MUST MATCH THE MODAL ID -->
+        <button class="btn btn-sm btn-success me-2" data-bs-toggle="modal" data-bs-target="#addProductModal">
+            <i class="bi bi-plus-circle-fill"></i> Add New Product
+        </button>
+        
+        <a href="#log-production-form" class="btn btn-sm btn-primary">
+            <i class="bi bi-droplet-half"></i> Log New Production
+        </a>
+    </div>
+</div>
+    <!-- KPI Cards (Your Original Layout) -->
+    <div class="row">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Stock Value</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.total_stock_value) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-wallet2 fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Total Units in Stock</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ '{:,.0f}'.format(stats.total_units_in_stock) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-box-seam fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Produced Today</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ '{:,.0f}'.format(stats.produced_today) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-droplet-half fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-secondary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-secondary text-uppercase mb-1">Produced - Last 7 Days</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ '{:,.0f}'.format(stats.produced_last_7_days) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-calendar-week fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Row -->
+    <div class="row">
+        <!-- Left Column: Upgraded Production History -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm mt-4">
+                <div class="card-header"><h5 class="mb-0">Production History & Costing</h5></div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Product</th>
+                                    <th class="text-end">Qty Produced</th>
+                                    <th class="text-end">Total Material Cost</th>
+                                    <th class="text-end">Cost Per Unit</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in production_logs %}
+                                <tr>
+                                    <td>{{ log.production_date }}</td>
+                                    <td>
+                                        <strong>{{ log.product_name }}</strong>
+                                        <button class="btn btn-link btn-sm p-0 ms-1" data-bs-toggle="modal" data-bs-target="#editProductModal" data-bs-id="{{ log.product_id }}" data-bs-name="{{ log.product_name }}" data-bs-price="{{ log.price }}"><i class="bi bi-pencil-square"></i></button>
+                                    </td>
+                                    <td class="text-end">{{ log.quantity_produced }}</td>
+                                    <td class="text-end">₦{{ '{:,.2f}'.format(log.total_cost or 0) }}</td>
+                                    <td class="text-end">₦{{ '{:,.2f}'.format(log.cost_per_unit or 0) }}</td>
+                                    <td class="text-center">
+                                        {% if not log.total_cost %}
+                                        <form action="{{ url_for('calculate_water_cost') }}" method="POST" class="d-inline">
+                                            <input type="hidden" name="production_log_id" value="{{ log.id }}">
+                                            <button type="submit" class="btn btn-sm btn-warning">Calculate Cost</button>
+                                        </form>
+                                        {% else %}
+                                        <span class="badge bg-success">Cost Finalized</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="6" class="text-center text-muted">No production logged yet.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Your Original Logging Forms -->
+        <div class="col-lg-4">
+            <div class="card shadow mb-4 mt-4" id="log-production-form">
+                <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Log Daily Production</h6></div>
+                <div class="card-body">
+                    <form action="{{ url_for('add_water_production_log') }}" method="POST">
+                        <div class="mb-3">
+                            <label for="production_date" class="form-label">Production Date</label>
+                            <input type="date" class="form-control" id="production_date" name="production_date" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="product_id" class="form-label">Select Product</label>
+                            <select class="form-select" id="product_id" name="product_id" required>
+                                <option selected disabled value="">Choose a product...</option>
+                                {% for product in water_products %}<option value="{{ product.id }}">{{ product.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="quantity_produced" class="form-label">Quantity Produced (Units)</label>
+                            <input type="number" class="form-control" id="quantity_produced" name="quantity_produced" min="1" required>
+                        </div>
+                        <div class="d-grid"><button type="submit" class="btn btn-success">Log Production</button></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALS (ALL MODALS NOW INCLUDED) -->
+
+    <!-- Add New Water Product Modal -->
+<div class="modal fade" id="addProductModal" tabindex="-1" aria-labelledby="addProductModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addProductModalLabel">Add New Water Product</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- The form correctly points to your 'add_water_product' route -->
+                <form action="{{ url_for('add_water_product') }}" method="POST">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Product Name</label>
+                        <input type="text" class="form-control" name="name" placeholder="e.g., 50cl Sachet Water" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="price" class="form-label">Sale Price per Unit (₦)</label>
+                        <input type="number" class="form-control" name="price" step="0.01" required>
+                    </div>
+                    <hr>
+                    <div class="d-grid">
+                         <button type="submit" class="btn btn-primary">Save Product</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="editProductModal" tabindex="-1" aria-labelledby="editProductModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editProductModalLabel">Edit Water Product</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 
+                  The `action` attribute will be set dynamically by JavaScript.
+                  The form `id` is used by the script to find this specific form. 
+                -->
+                <form id="editProductForm" method="POST" action="">
+                    <div class="mb-3">
+                        <label class="form-label">Product Name</label>
+                        <input type="text" class="form-control" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Sale Price per Unit (₦)</label>
+                        <input type="number" class="form-control" name="price" step="0.01" required>
+                    </div>
+                    <hr>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Update Product</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+    <!-- NEW: Log Material Usage Modal -->
+    <div class="modal fade" id="logMaterialModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form action="{{ url_for('log_inventory_usage') }}" method="POST">
+                    <div class="modal-header"><h5 class="modal-title">Log Material Usage</h5>...</div>
+                    <div class="modal-body">
+                        <input type="hidden" name="log_date" value="{{ today_date }}">
+                        <div class="mb-3">
+                            <label class="form-label">For Production Run (Date - Product):</label>
+                            <select class="form-select" name="water_production_log_id" required>
+                                <option disabled selected value="">-- Select a production run --</option>
+                                {% for log in production_logs %}{% if not log.total_cost %}
+                                    <option value="{{ log.id }}">{{ log.production_date }} - {{ log.product_name }}</option>
+                                {% endif %}{% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Material Item:</label>
+                            <select class="form-select" name="inventory_item_id" required>
+                                <option disabled selected value="">-- Select material --</option>
+                                {% for item in water_materials %}
+                                    <option value="{{ item.id }}">{{ item.name }} (Available: {{ item.quantity }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Quantity Used:</label>
+                            <input type="number" step="any" class="form-control" name="quantity_used" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Log Usage</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+
+{% block head_styles %}
+    <style>
+    .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
+    .border-left-success { border-left: 0.25rem solid #1cc88a !important; }
+    .border-left-info { border-left: 0.25rem solid #36b9cc !important; }
+    .border-left-secondary { border-left: 0.25rem solid #858796 !important; }
+    .text-xs { font-size: .9rem; }
+    .text-gray-300 { color: #dddfeb !important; }
+    </style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Set default date for production log to today
+    document.getElementById('production_date').valueAsDate = new Date();
+
+    // --- NEW SCRIPT FOR THE EDIT MODAL ---
+    const editProductModal = document.getElementById('editProductModal');
+    editProductModal.addEventListener('show.bs.modal', function (event) {
+        // Button that triggered the modal
+        const button = event.relatedTarget;
+        
+        // Extract info from data-bs-* attributes
+        const productId = button.getAttribute('data-bs-id');
+        const name = button.getAttribute('data-bs-name');
+        const price = button.getAttribute('data-bs-price');
+
+        // Update the modal's content.
+        const modalForm = editProductModal.querySelector('#editProductForm');
+        const modalTitle = editProductModal.querySelector('.modal-title');
+
+        modalTitle.textContent = 'Edit Product: ' + name;
+        // Set the form's action URL dynamically
+        modalForm.action = `/water/product/update/${productId}`; 
+
+        // Pre-fill the form fields
+        modalForm.querySelector('input[name="name"]').value = name;
+        modalForm.querySelector('input[name="price"]').value = price;
+    });
+</script>
+{% endblock %}

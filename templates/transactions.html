@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Transaction Ledger{% endblock %}
+
+{% block content %}
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Income & Expense Ledger</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <button class="btn btn-outline-secondary me-2" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+                <i class="bi bi-funnel-fill"></i> Filter Transactions
+            </button>
+            <a href="{{ url_for('add_expense') }}" class="btn btn-danger"><i class="bi bi-wallet2"></i> Add Expense</a>
+        </div>
+    </div>
+
+    <!-- Filter Form (Collapsible) -->
+    <div class="collapse" id="filterCollapse">
+        <div class="card card-body mb-4 shadow-sm">
+            <form method="GET" action="{{ url_for('transactions_ledger') }}">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3"><label for="start_date" class="form-label">Start Date</label><input type="date" class="form-control" name="start_date" value="{{ request.args.get('start_date', '') }}"></div>
+                    <div class="col-md-3"><label for="end_date" class="form-label">End Date</label><input type="date" class="form-control" name="end_date" value="{{ request.args.get('end_date', '') }}"></div>
+                    <div class="col-md-3">
+                        <label for="type" class="form-label">Transaction Type</label>
+                        <select name="type" class="form-select">
+                            <option value="" {% if not request.args.get('type') %}selected{% endif %}>All Types</option>
+                            <option value="income" {% if request.args.get('type') == 'income' %}selected{% endif %}>Income</option>
+                            <option value="expense" {% if request.args.get('type') == 'expense' %}selected{% endif %}>Expense</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3"><button type="submit" class="btn btn-primary w-100">Apply Filter</button></div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- KPI Cards reflecting the filtered data -->
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Income (Filtered)</div>
+                    <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.total_income) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Total Expenses (Filtered)</div>
+                    <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.total_expenses) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Net Result (Filtered)</div>
+                    <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.net_result) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transactions Table -->
+    <div class="card shadow">
+        <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Transaction History</h6></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Category / Account</th>
+                            <th class="text-center">Type</th>
+                            <th class="text-end">Amount</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for transaction in transactions %}
+                        <tr>
+                            <td>{{ transaction.date.strftime('%Y-%m-%d') }}</td>
+                            <td>{{ transaction.description }}</td>
+                            <td>{{ transaction.category }}</td>
+                            <td class="text-center">
+                                {% if transaction.type == 'income' %}<span class="badge bg-success">Income</span>
+                                {% elif transaction.type == 'expense' %}<span class="badge bg-danger">Expense</span>
+                                {% else %}<span class="badge bg-secondary">Journal</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">₦{{ '{:,.2f}'.format(transaction.amount) }}</td>
+                            <td>
+                                <a href="{{ url_for('view_journal_entry', entry_id=transaction.journal_id) }}" class="btn btn-sm btn-outline-info">Details</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center text-muted">No transactions found for the selected criteria.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <!-- Add Pagination controls here if you have many transactions -->
+        </div>
+    </div>
+{% endblock %}
+
+{% block head_styles %}
+<style>
+    .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
+    .border-left-success { border-left: 0.25rem solid #1cc88a !important; }
+    .border-left-danger { border-left: 0.25rem solid #e74a3b !important; }
+    .text-xs { font-size: .9rem; }
+    .text-gray-800 { color: #5a5c69 !important; }
+</style>
+{% endblock %}

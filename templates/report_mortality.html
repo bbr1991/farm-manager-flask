@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Brooding Mortality Report{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom no-print">
+    <h1 class="h2"><i class="bi bi-clipboard2-pulse-fill me-2"></i>Brooding Mortality Report</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('reports_dashboard') }}" class="btn btn-sm btn-outline-secondary me-2">
+            <i class="bi bi-arrow-left"></i> Back to Reports
+        </a>
+        <button onclick="window.print();" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-printer-fill"></i> Print Report
+        </button>
+    </div>
+</div>
+
+<!-- Date Selection Form -->
+<form method="GET" action="{{ url_for('report_mortality') }}" class="card p-3 mb-4 no-print bg-light">
+    <div class="row align-items-end">
+        <div class="col-md-4">
+            <label for="start_date" class="form-label">Start Date</label>
+            <input type="date" class="form-control" name="start_date" id="start_date" value="{{ start_date }}">
+        </div>
+        <div class="col-md-4">
+            <label for="end_date" class="form-label">End Date</label>
+            <input type="date" class="form-control" name="end_date" id="end_date" value="{{ end_date }}">
+        </div>
+        <div class="col-md-4">
+            <button type="submit" class="btn btn-primary">Generate Report</button>
+        </div>
+    </div>
+</form>
+
+<!-- Report Header for Printing -->
+<div class="text-center d-none print-show mb-4">
+    <h3>Brooding Mortality Report</h3>
+    <p><strong>Farm:</strong> {{ g.user.farm_name }}</p>
+    <p><strong>Period:</strong> {{ start_date }} to {{ end_date }}</p>
+    <p><strong>Printed On:</strong> {{ now.strftime('%Y-%m-%d %H:%M:%S') }} UTC</p>
+</div>
+
+<!-- Report Table -->
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Brooding Batch</th>
+                        <th class="text-center">Initial Count</th>
+                        <th class="text-center">Mortality Count</th>
+                        <th class="text-center">Mortality Rate (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in mortality_logs %}
+                    <tr>
+                        <td>{{ log.log_date }}</td>
+                        <td>{{ log.batch_name }}</td>
+                        <td class="text-center">{{ log.initial_chick_count }}</td>
+                        <td class="text-center text-danger">{{ log.mortality_count }}</td>
+                        <td class="text-center text-danger">
+                            {% if log.initial_chick_count > 0 %}
+                                {{ '{:,.2%}'.format(log.mortality_count / log.initial_chick_count) }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center p-4 text-muted">No mortalities were recorded for this period.</td></tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-group-divider">
+                        <th colspan="4" class="text-end fs-5">Total Mortalities for Period:</th>
+                        <th class="text-center fs-5 text-danger">{{ total_mortality }}</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+/* CSS for better printing */
+@media print {
+    .no-print { display: none !important; }
+    .print-show { display: block !important; }
+    body, .card {
+        border: none !important;
+        box-shadow: none !important;
+    }
+    a { text-decoration: none; color: #000; }
+}
+</style>
+{% endblock %}

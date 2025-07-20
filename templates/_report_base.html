@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{# This block will be filled by the specific report template #}
+{% block title %}{{ report_title }} - Reports{% endblock %}
+
+{% block content %}
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom no-print">
+        <h1 class="h2">{{ report_title }}</h1>
+        <a href="{{ url_for('reports_dashboard') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left-circle"></i> Back to All Reports
+        </a>
+    </div>
+
+    <!-- Filter Form (This is now reusable for every report!) -->
+    <div class="card shadow-sm mb-4 no-print">
+        <div class="card-body">
+            {# The form action cleverly points to the current page's URL #}
+            <form method="GET" action="{{ request.path }}">
+                <div class="row g-3 align-items-end">
+                    
+                    {# This block allows specific reports to add extra filters #}
+                    {% block extra_filters %}{% endblock %}
+                    
+                    <div class="col-md"><label class="form-label">Start Date</label><input type="date" name="start_date" class="form-control" value="{{ start_date }}"></div>
+                    <div class="col-md"><label class="form-label">End Date</label><input type="date" name="end_date" class="form-control" value="{{ end_date }}"></div>
+                    <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Generate</button></div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Report Display Area -->
+    <div class="card shadow-sm" id="report-card">
+        <div class="card-header d-flex justify-content-between align-items-center py-3">
+            <div>
+                <h4 class="mb-0">{{ report_title }}</h4>
+                {# Conditionally show the date range #}
+                {% if start_date and end_date %}
+                <p class="text-muted mb-0">For the period from {{ start_date }} to {{ end_date }}</p>
+                {% endif %}
+            </div>
+            <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print();">
+                <i class="bi bi-printer-fill me-1"></i> Print Report
+            </button>
+        </div>
+        <div class="card-body p-4">
+            {# This is where the specific report's content will be injected #}
+            {% block report_content %}
+                <p class="text-center text-muted">Please select your report criteria and click "Generate".</p>
+            {% endblock %}
+        </div>
+        <div class="card-footer text-center text-muted small no-print">
+            Report generated on {{ now.strftime('%Y-%m-%d %H:%M:%S') }}
+        </div>
+    </div>
+{% endblock %}
+
+{% block head_styles %}
+<style>
+    @media print {
+        .no-print { display: none !important; }
+        body, #content { background-color: #fff; padding: 0; margin: 0; }
+        #report-card { border: none !important; box-shadow: none !important; }
+        .card-body { padding: 0 !important; }
+    }
+</style>
+{% endblock %}

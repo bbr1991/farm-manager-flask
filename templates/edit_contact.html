@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - Edit Contact{% endblock %}
+
+{% block content %}
+    <h2 class="mb-4">Edit Contact: {{ contact.name }}</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Update Contact Details</h5>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('update_contact', contact_id=contact.id) }}" method="POST">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="contact_name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="contact_name" name="name" value="{{ contact.name }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="contact_type" class="form-label">Contact Type</label>
+                        <select class="form-select" id="contact_type" name="type" required>
+                            <option value="Customer" {% if contact.type == 'Customer' %}selected{% endif %}>Customer</option>
+                            <option value="Supplier" {% if contact.type == 'Supplier' %}selected{% endif %}>Supplier</option>
+                            <option value="Other" {% if contact.type == 'Other' %}selected{% endif %}>Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="contact_phone" class="form-label">Phone</label>
+                        <input type="tel" class="form-control" id="contact_phone" name="phone" value="{{ contact.phone or '' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="contact_email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="contact_email" name="email" value="{{ contact.email or '' }}">
+                    </div>
+                </div>
+                <hr class="my-4">
+                <button class="btn btn-primary btn-lg" type="submit">Update Contact</button>
+                <a href="{{ url_for('contacts') }}" class="btn btn-secondary btn-lg">Cancel</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}

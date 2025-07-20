@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - Debtor & Creditor List{% endblock %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Debtor & Creditor Balances</h2>
+        <a href="{{ url_for('new_transaction_page') }}" class="btn btn-success">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-circle" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+            New Transaction
+        </a>
+    </div>
+    <p>A summary of all outstanding balances.</p>
+
+    <div class="row">
+        <!-- Debtors List (People who owe you) -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">Debtors (Owed to Farm)</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-striped">
+                        <thead><tr><th>Name</th><th class="text-end">Balance</th><th></th></tr></thead>
+                        <tbody>
+                            {% for d in debtors %}
+                            <tr>
+                                <td>{{ d.name }}<br><small class="text-muted">{{ d.phone or '' }}</small></td>
+                                <td class="text-end text-danger"><strong>₦{{ '{:,.2f}'.format(d.balance) }}</strong></td>
+                                <td><a href="{{ url_for('ledger', contact_id=d.id) }}" class="btn btn-sm btn-outline-primary">View</a></td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center">No debtors with outstanding balances.</td></tr>
+                            {% endfor %} {# This closes the for loop #}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Creditors List (People you owe) -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Creditors (Owed by Farm)</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-striped">
+                        <thead><tr><th>Name</th><th class="text-end">Balance</th><th></th></tr></thead>
+                        <tbody>
+                            {% for c in creditors %}
+                            <tr>
+                                <td>{{ c.name }}<br><small class="text-muted">{{ c.phone or '' }}</small></td>
+                                {# We multiply by -1 to show it as a positive number we owe #}
+                                <td class="text-end text-success"><strong>₦{{ '{:,.2f}'.format(c.balance * -1) }}</strong></td>
+                                <td><a href="{{ url_for('ledger', contact_id=c.id) }}" class="btn btn-sm btn-outline-primary">View</a></td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center">No creditors with outstanding balances.</td></tr>
+                            {% endfor %} {# This closes the for loop #}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %} {# This closes the content block #}

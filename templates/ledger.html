@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - Customer Ledger{% endblock %}
+
+{% block content %}
+    <h2 class="mb-4">Customer & Supplier Ledger</h2>
+
+    <!-- NEW: Search Form -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header"><h5 class="mb-0">Find a Contact</h5></div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('ledger') }}">
+                <div class="input-group">
+                    <input type="text" class="form-control" placeholder="Search by Name, Phone, or Email..." name="search_query" value="{{ search_query or '' }}">
+                    <button class="btn btn-primary" type="submit">Search</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- NEW: Search Results (or All Contacts) -->
+    {# This block will show search results, or all contacts if no search has been made #}
+    {% if contacts_list %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header"><h5 class="mb-0">Contacts List</h5></div>
+        <div class="list-group list-group-flush">
+            {% for contact in contacts_list %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>{{ contact.name }}</strong> ({{ contact.type }})
+                    <br>
+                    <small class="text-muted">{{ contact.phone or '' }} | {{ contact.email or '' }}</small>
+                </div>
+                <a href="{{ url_for('ledger', contact_id=contact.id) }}" class="btn btn-sm btn-outline-primary">View Ledger</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+
+    <!-- Ledger Results Section (This part remains the same) -->
+    {% if selected_contact and transactions %}
+    <hr class="my-4">
+    <h3 class="mb-3">Ledger for: {{ selected_contact.name }}</h3>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <table class="table table-striped">
+                <!-- The transaction table is the same as before -->
+            </table>
+        </div>
+    </div>
+    {% elif selected_contact %}
+        <hr class="my-4">
+        <h3 class="mb-3">Ledger for: {{ selected_contact.name }}</h3>
+        <p class="text-center">No transactions found for this contact.</p>
+    {% endif %}
+
+{% endblock %}

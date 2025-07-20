@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - New Transaction{% endblock %}
+
+{% block content %}
+    <h2 class="mb-4">Record New Transaction / Point of Sale</h2>
+
+    <div class="card shadow-sm">
+        <div class="card-header"><h5 class="mb-0">Transaction Details</h5></div>
+        <div class="card-body">
+            <form action="{{ url_for('add_transaction') }}" method="POST">
+                <div class="row g-3">
+                    <!-- Contact and Date are the same -->
+                    <div class="col-md-6"><label for="contact_id" class="form-label">Select Contact</label><select class="form-select" id="contact_id" name="contact_id" required>
+                        <option value="">Choose...</option>
+                        {% for contact in all_contacts %}<option value="{{ contact.id }}">{{ contact.name }}</option>{% endfor %}
+                    </select></div>
+                    <div class="col-md-6"><label for="transaction_date" class="form-label">Transaction Date</label><input type="date" class="form-control" id="transaction_date" name="transaction_date" required></div>
+
+                    <!-- NEW: Transaction Type Selection -->
+                    <div class="col-12">
+                        <label for="transaction_type" class="form-label">Type of Transaction</label>
+                        <select class="form-select" id="transaction_type" name="transaction_type">
+                            <option value="payment">Payment Received / General Credit</option>
+                            <option value="sale">Sale of Inventory Item</option>
+                            <option value="general_debit">General Debit (Non-Inventory)</option>
+                        </select>
+                    </div>
+
+                    <!-- Fields for Sale of Inventory (Initially Hidden) -->
+                    <div id="sale_fields" style="display: none;" class="row g-3 mt-1">
+                        <div class="col-md-8">
+                            <label for="inventory_item_id" class="form-label">Select Item Sold</label>
+                            <select class="form-select" id="inventory_item_id" name="inventory_item_id">
+                                <option value="">Choose item...</option>
+                                {% for item in all_inventory %}
+                                <option value="{{ item.id }}">{{ item.name }} (Avail: {{ item.quantity }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="sale_quantity" class="form-label">Quantity Sold</label>
+                            <input type="number" class="form-control" id="sale_quantity" name="sale_quantity" step="any">
+                        </div>
+                    </div>
+
+                    <!-- Standard Debit/Credit Fields -->
+                    <div id="payment_fields" class="row g-3 mt-1">
+                        <div class="col-12"><label for="description" class="form-label">Description</label><input type="text" class="form-control" id="description" name="description" required></div>
+                        <div class="col-md-6"><label for="debit" class="form-label">Debit (Owed TO You)</label><div class="input-group"><span class="input-group-text">₦</span><input type="number" class="form-control" id="debit" name="debit" value="0.00" step="0.01" min="0"></div></div>
+                        <div class="col-md-6"><label for="credit" class="form-label">Credit (Paid BY You / Received)</label><div class="input-group"><span class="input-group-text">₦</span><input type="number" class="form-control" id="credit" name="credit" value="0.00" step="0.01" min="0"></div></div>
+                    </div>
+                </div>
+                <hr class="my-4">
+                <button type="submit" class="btn btn-success btn-lg">Record Transaction</button>
+                <a href="{{ url_for('contact_balances') }}" class="btn btn-secondary btn-lg">Cancel</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // This script shows/hides the correct form fields based on the transaction type
+    document.getElementById('transaction_type').addEventListener('change', function() {
+        const saleFields = document.getElementById('sale_fields');
+        const paymentFields = document.getElementById('payment_fields');
+        const descriptionInput = document.getElementById('description');
+        const debitInput = document.getElementById('debit');
+
+        if (this.value === 'sale') {
+            saleFields.style.display = 'flex';
+            paymentFields.style.display = 'none';
+            descriptionInput.required = false; // Not required for sales, we'll generate it
+            debitInput.required = false;
+        } else {
+            saleFields.style.display = 'none';
+            paymentFields.style.display = 'flex';
+            descriptionInput.required = true;
+            debitInput.required = true;
+        }
+    });
+    <script>
+    document.getElementById('transaction_type').addEventListener('change', function() {
+        const saleFields = document.getElementById('sale_fields');
+        const paymentFields = document.getElementById('payment_fields');
+        const descriptionInput = document.getElementById('description');
+        const creditInput = document.getElementById('credit');
+        const debitInput = document.getElementById('debit');
+
+        if (this.value === 'sale') {
+            saleFields.style.display = 'flex';
+            // Show only the debit field for the total price
+            paymentFields.style.display = 'flex'; 
+            descriptionInput.parentElement.style.display = 'none';
+            creditInput.parentElement.parentElement.style.display = 'none';
+            descriptionInput.required = false;
+        } else {
+            saleFields.style.display = 'none';
+            paymentFields.style.display = 'flex';
+            descriptionInput.parentElement.style.display = 'block';
+            creditInput.parentElement.parentElement.style.display = 'block';
+            descriptionInput.required = true;
+        }
+    });
+</script>
+{% endblock %}

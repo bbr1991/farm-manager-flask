@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - Edit Permissions{% endblock %}
+
+{% block content %}
+    <h2 class="mb-2">Edit Permissions for: {{ user_to_edit.username }}</h2>
+    <p class="text-muted mb-4">Select the permissions this user should have.</p>
+    
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <!-- This form will submit to the route we build next -->
+            <form action="{{ url_for('edit_user_permissions', user_id=user_to_edit.id) }}" method="POST">
+                <div class="row">
+                    {% for perm in all_permissions %}
+                    <div class="col-md-4">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="permissions" value="{{ perm.id }}" id="perm_{{ perm.id }}"
+                                   {% if perm.id in user_permission_ids %}checked{% endif %}>
+                            <label class="form-check-label" for="perm_{{ perm.id }}">
+                                <strong>{{ perm.name }}</strong>
+                                <br>
+                                <small class="text-muted">{{ perm.description }}</small>
+                            </label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <hr class="my-4">
+                <button type="submit" class="btn btn-primary">Save Permissions</button>
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Cancel</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}

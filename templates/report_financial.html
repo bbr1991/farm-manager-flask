@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - Financial Report{% endblock %}
+
+{% block head_styles %}
+<style>
+    @media print {
+        body > *:not(.printable-area) { display: none; }
+        .printable-area { display: block; position: absolute; top: 0; left: 0; width: 100%; }
+        .printable-area .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; }
+        .no-print { display: none !important; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="no-print">
+        <h2 class="mb-4">Generate Financial Report</h2>
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <p>Select a date range to generate a summary of income and expenses.</p>
+                <form action="{{ url_for('report_financial') }}" method="POST">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-5"><label for="start_date" class="form-label">Start Date</label><input type="date" class="form-control" id="start_date" name="start_date" value="{{ report_data.start_date if report_data else '' }}" required></div>
+                        <div class="col-md-5"><label for="end_date" class="form-label">End Date</label><input type="date" class="form-control" id="end_date" name="end_date" value="{{ report_data.end_date if report_data else '' }}" required></div>
+                        <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Generate</button></div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Results Section -->
+    {% if report_data %}
+    <div class="printable-area">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3>Report for {{ report_data.start_date }} to {{ report_data.end_date }}</h3>
+            <button class="btn btn-secondary no-print" onclick="window.print();">Print Report</button>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="row mb-4 text-center">
+            <div class="col-md-4"><div class="card text-white bg-success"><div class="card-header">Total Income</div><div class="card-body"><h4 class="card-title">₦{{ '{:,.2f}'.format(report_data.total_income) }}</h4></div></div></div>
+            <div class="col-md-4"><div class="card text-white bg-danger"><div class="card-header">Total Expenses</div><div class="card-body"><h4 class="card-title">₦{{ '{:,.2f}'.format(report_data.total_expenses) }}</h4></div></div></div>
+            <div class="col-md-4"><div class="card text-white bg-info"><div class="card-header">Net Profit</div><div class="card-body"><h4 class="card-title">₦{{ '{:,.2f}'.format(report_data.net_profit) }}</h4></div></div></div>
+        </div>
+
+        <!-- Detailed Tables -->
+        <div class="row">
+            <!-- Income Details -->
+            <div class="col-lg-6">
+                <h4>Income Details</h4>
+                <table class="table table-sm table-striped">
+                    <thead><tr><th>Date</th><th>Source</th><th class="text-end">Amount</th></tr></thead>
+                    <tbody>
+                        {% for item in report_data.income_records %}
+                        <tr><td>{{ item.income_date }}</td><td>{{ item.source }}</td><td class="text-end">₦{{ '{:,.2f}'.format(item.amount) }}</td></tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center">No income in this period.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <!-- Expense Details -->
+            <div class="col-lg-6">
+                <h4>Expense Details</h4>
+                <table class="table table-sm table-striped">
+                    <thead><tr><th>Date</th><th>Category</th><th class="text-end">Amount</th></tr></thead>
+                    <tbody>
+                        {% for item in report_data.expense_records %}
+                        <tr><td>{{ item.expense_date }}</td><td>{{ item.category }}</td><td class="text-end">₦{{ '{:,.2f}'.format(item.amount) }}</td></tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center">No expenses in this period.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+{% endblock %}

@@ -1,0 +1,16 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+*.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# SQLite Database
+# You might want to track this in the beginning, but it's good practice to ignore
+# instance/
+# *.sqlite3

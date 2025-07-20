@@ -1,0 +1,69 @@
+{% extends "_report_base.html" %}
+
+{# 1. Define the report's title. This appears in the browser tab and on the page. #}
+{% set report_title = "Profit & Loss Statement" %}
+
+{# 2. This is the only part you need to write for the report's content! #}
+{% block report_content %}
+    {# Only show this section if the backend has sent data #}
+    {% if data %}
+        <!-- Summary Cards (This replaces your old colored summary cards) -->
+        <div class="row mb-4 text-center no-print">
+            <div class="col-md-4"><div class="card text-white bg-success shadow-sm"><div class="card-header">Total Revenue</div><div class="card-body"><h4 class="card-title">₦{{ '{:,.2f}'.format(data.total_revenue) }}</h4></div></div></div>
+            <div class="col-md-4"><div class="card text-white bg-danger shadow-sm"><div class="card-header">Total Expenses</div><div class="card-body"><h4 class="card-title">₦{{ '{:,.2f}'.format(data.total_expenses) }}</h4></div></div></div>
+            <div class="col-md-4"><div class="card text-white bg-info shadow-sm"><div class="card-header">Net Profit</div><div class="card-body"><h4 class="card-title">₦{{ '{:,.2f}'.format(data.net_profit) }}</h4></div></div></div>
+        </div>
+        
+        <!-- Detailed Tables (This replaces your old "Income Details" and "Expense Details") -->
+        <div class="mb-5">
+            <h5 class="border-bottom pb-2 mb-3">Revenue</h5>
+            <table class="table table-sm">
+                <tbody>
+                    {% for account in data.revenue_accounts %}
+                    <tr>
+                        <td>{{ account.name }}</td>
+                        <td class="text-end">₦{{ '{:,.2f}'.format(account.balance) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-light"><th class="text-end">Total Revenue</th><th class="text-end">₦{{ '{:,.2f}'.format(data.total_revenue) }}</th></tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="mb-4">
+            <h5 class="border-bottom pb-2 mb-3">Expenses</h5>
+            <table class="table table-sm">
+                <tbody>
+                    {% for account in data.expense_accounts %}
+                    <tr>
+                        <td>{{ account.name }}</td>
+                        <td class="text-end">₦{{ '{:,.2f}'.format(account.balance) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-light"><th class="text-end">Total Expenses</th><th class="text-end">₦{{ '{:,.2f}'.format(data.total_expenses) }}</th></tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <hr>
+
+        <table class="table table-borderless fs-5">
+            <tbody>
+                <tr class="fw-bold">
+                    <td class="text-end">Net Profit / (Loss):</td>
+                    <td class="text-end border-top border-bottom border-dark" style="width: 25%;">
+                        ₦{{ '{:,.2f}'.format(data.net_profit) }}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+    {% else %}
+        {# This message shows before the user has generated a report #}
+        <p class="text-center text-muted">Please select a date range and click "Generate" to view the Profit & Loss Statement.</p>
+    {% endif %}
+{% endblock %}

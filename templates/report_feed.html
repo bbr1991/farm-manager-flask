@@ -1,0 +1,50 @@
+{% extends "_report_base.html" %}
+
+{# 1. Define the report's title #}
+{% set report_title = "Inventory Usage Report" %}
+
+{# 2. Add the unique filter for this report #}
+{% block extra_filters %}
+<div class="col-md-4">
+    <label for="category" class="form-label">Item Category</label>
+    <select class="form-select" id="category" name="category">
+        <option value="" {% if not selected_category %}selected{% endif %}>All Categories</option>
+        <option value="Feed" {% if selected_category == 'Feed' %}selected{% endif %}>Feed</option>
+        <option value="Medicine" {% if selected_category == 'Medicine' %}selected{% endif %}>Medicine</option>
+        <option value="Other" {% if selected_category == 'Other' %}selected{% endif %}>Other</option>
+    </select>
+</div>
+{% endblock %}
+
+{# 3. Define the content of the report itself #}
+{% block report_content %}
+    {# Only show this section if the backend has sent data #}
+    {% if data %}
+        <h5 class="border-bottom pb-2 mb-3">Total Usage by Item</h5>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Item Name</th>
+                    <th>Category</th>
+                    <th class="text-end">Total Quantity Used</th>
+                </tr>
+            </thead>
+            <tbody>
+                {# This loop is the same as your old view file #}
+                {% for item in data.usage_summary %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.category }}</td>
+                    <td class="text-end fw-bold">{{ item.total_used }} {{ item.unit }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" class="text-center text-muted py-4">No inventory usage was recorded in this period for the selected category.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+    {% else %}
+        {# This message shows before the user has generated a report #}
+        <p class="text-center text-muted">Please select a date range and category, then click "Generate" to view the usage report.</p>
+    {% endif %}
+{% endblock %}

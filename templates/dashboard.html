@@ -1,92 +1,113 @@
 {% extends "base.html" %}
-
-{# The title block now uses 'user.farm_name' and 'page_title_tag' #}
-{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - {{ page_title_tag }}{% endblock %}
+{% block title %}Dashboard{% endblock %}
 
 {% block content %}
-    <div class="p-4 p-md-5 mb-4 rounded text-bg-primary">
-        <div class="col-md-8 px-0">
-            {# The welcome message is now dynamic #}
-            <h1 class="display-5 fst-italic">Welcome to the {{ current_page_title }}</h1>
-            <p class="lead my-3">A complete overview of your farm's performance and operations.</p>
-        </div>
-    </div>
-
-    <!-- Financial Summary Row (This section is already perfect) -->
-    <div class="row mb-4 text-center">
-        <h3 class="mb-3">Financial Summary</h3>
-        <div class="col-md-4">
-            <div class="card text-white bg-success shadow">
-                <div class="card-header">Total Income</div>
-                <div class="card-body">
-                    <h4 class="card-title">₦{{ '{:,.2f}'.format(stats.total_income) }}</h4>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card text-white bg-danger shadow">
-                <div class="card-header">Total Expenses</div>
-                <div class="card-body">
-                    <h4 class="card-title">₦{{ '{:,.2f}'.format(stats.total_expenses) }}</h4>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card text-white bg-info shadow">
-                <div class="card-header">Net Profit</div>
-                <div class="card-body">
-                    <h4 class="card-title">₦{{ '{:,.2f}'.format(stats.net_profit) }}</h4>
-                </div>
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Dashboard</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <div class="btn-group me-2">
+                <a href="{{ url_for('new_sale') }}" class="btn btn-sm btn-outline-success"><i class="bi bi-cart-plus-fill"></i> New Sale</a>
+                <a href="{{ url_for('new_expense') }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-wallet2"></i> Add Expense</a>
             </div>
         </div>
     </div>
 
-    <!-- Poultry Summary Row (This section is also perfect) -->
-    <div class="row mb-4 text-center">
-        <h3 class="mb-3">Poultry Summary</h3>
-        <div class="col-md-4">
-            <div class="card shadow-sm">
-                <div class="card-header">Total Active Birds</div>
-                <div class="card-body">
-                    <h4 class="card-title">{{ stats.total_active_birds }}</h4>
-                    <small class="text-muted">Birds</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm">
-                <div class="card-header">Eggs Collected Today</div>
-                <div class="card-body">
-                    <h4 class="card-title">{{ stats.eggs_today }}</h4>
-                    <small class="text-muted">Eggs</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm">
-                <div class="card-header">Eggs - Last 7 Days</div>
-                <div class="card-body">
-                    <h4 class="card-title">{{ stats.eggs_last_7_days }}</h4>
-                    <small class="text-muted">Eggs</small>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Quick Actions Row (This section is also perfect) -->
+    <!-- KPI (Key Performance Indicator) Stats Cards -->
+    <!-- Note: We replaced the 'border-left-*' classes with our own semantic classes -->
     <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    Quick Actions
-                </div>
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card kpi-card kpi-card--success shadow h-100 py-2">
                 <div class="card-body">
-                    <a href="{{ url_for('income') }}" class="btn btn-success me-2">Manage Income</a>
-                    <a href="{{ url_for('expenses') }}" class="btn btn-danger me-2">Manage Expenses</a>
-                    <a href="{{ url_for('inventory') }}" class="btn btn-secondary me-2">Manage Inventory</a>
-                    <a href="{{ url_for('poultry') }}" class="btn btn-info">Manage Poultry</a>
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Net Profit</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.net_profit) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-graph-up-arrow fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card kpi-card kpi-card--primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Income</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.total_income) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-cash-coin fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card kpi-card kpi-card--danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Total Expenses</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.total_expenses) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-receipt fs-2 text-gray-300"></i></div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Main Content Row (Charts and Actions) -->
+    <div class="row">
+        <!-- Left Column: Main Charts -->
+        <div class="col-lg-8">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3"><h6 class="m-0 font-weight-bold">Monthly Income vs. Expenses</h6></div>
+                <div class="card-body">
+                    <!-- Note: We pass the data via a data-* attribute. It's safe and clean. -->
+                    <canvas id="financialBarChart" data-chart-data='{{ financial_chart_data | tojson }}' style="height: 320px;"></canvas>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card shadow mb-4">
+                        <div class="card-header py-3"><h6 class="m-0 font-weight-bold">Daily Egg Production</h6></div>
+                        <div class="card-body"><canvas id="eggLineChart" data-chart-data='{{ egg_chart_data | tojson }}'></canvas></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card shadow mb-4">
+                        <div class="card-header py-3"><h6 class="m-0 font-weight-bold">Daily Water Production</h6></div>
+                        <div class="card-body"><canvas id="waterLineChart" data-chart-data='{{ table_water_chart_data | tojson }}'></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Quick Actions & Pie Chart -->
+        <div class="col-lg-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3"><h6 class="m-0 font-weight-bold">Quick Actions</h6></div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="{{ url_for('new_sale') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"><span><i class="bi bi-cart-plus-fill me-2"></i>Record New Sale</span><i class="bi bi-chevron-right"></i></a>
+                        <a href="{{ url_for('new_expense') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"><span><i class="bi bi-wallet2 me-2"></i>Add Expense</span><i class="bi bi-chevron-right"></i></a>
+                        <a href="{{ url_for('poultry_dashboard') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"><span><i class="bi bi-egg-fill me-2"></i>Log Egg Collection</span><i class="bi bi-chevron-right"></i></a>
+                        <a href="{{ url_for('inventory_dashboard') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"><span><i class="bi bi-box-seam-fill me-2"></i>Manage Inventory</span><i class="bi bi-chevron-right"></i></a>
+                    </div>
+                </div>
+            </div>
+            <div class="card shadow mb-4">
+                <div class="card-header py-3"><h6 class="m-0 font-weight-bold">Expense Breakdown</h6></div>
+                <div class="card-body">
+                    <canvas id="expensePieChart" data-chart-data='{{ expense_data | tojson }}'></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <!-- This block now only contains the link to the dashboard-specific JS file -->
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

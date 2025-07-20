@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - Record New Purchase{% endblock %}
+
+{% block content %}
+    <h2 class="mb-4">Record New Purchase or Expense</h2>
+    <div class="card shadow-sm">
+        <div class="card-header"><h5 class="mb-0">Purchase/Expense Details</h5></div>
+        <div class="card-body">
+            <form action="{{ url_for('add_purchase_post') }}" method="POST">
+                <div class="row g-3">
+                    <div class="col-md-6"><label for="date" class="form-label">Date</label><input type="date" class="form-control" id="date" name="date" required></div>
+                    <div class="col-md-6"><label for="contact_id" class="form-label">Supplier (Optional)</label><select class="form-select" id="contact_id" name="contact_id"><option value="" selected>None</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></div>
+                    <div class="col-12"><label for="description" class="form-label">Description</label><input type="text" class="form-control" id="description" name="description" required></div>
+                    
+                    <div class="col-md-6">
+                        <label for="debit_account_id" class="form-label">Expense Type (Debit)</label>
+                        <select class="form-select" id="debit_account_id" name="debit_account_id" required>
+                            <option selected disabled value="">Choose...</option>
+                            {% for acc in expense_accounts %}<option value="{{ acc.id }}" data-category="{{ acc.name.replace(' Expense', '') }}">{{ acc.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- This dropdown is now controlled more carefully by JavaScript -->
+                    <div class="col-md-6" id="inventory_item_div" style="display: none;">
+                        <label for="inventory_item_id" class="form-label">Update Inventory Item</label>
+                        <select class="form-select" id="inventory_item_id" name="inventory_item_id">
+                            <!-- The options will be added by JS -->
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="credit_account_id" class="form-label">Paid From (Credit)</label>
+                        <select class="form-select" id="credit_account_id" name="credit_account_id" required>
+                            {% for acc in asset_accounts %}<option value="{{ acc.id }}">{{ acc.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    
+                    {# --- NEW AND UPDATED FIELDS --- #}
+                    <div class="col-md-3" id="quantity_div" style="display: none;">
+                        <label for="quantity_purchased" class="form-label">Quantity Purchased</label>
+                        <input type="number" class="form-control" id="quantity_purchased" name="quantity_purchased" step="any" placeholder="e.g., 10">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="amount" class="form-label">Total Amount Paid (₦)</label>
+                        <input type="number" class="form-control" id="amount" name="amount" step="0.01" min="0.01" required>
+                    </div>
+                </div>
+                <hr class="my-4">
+                <button class="btn btn-danger btn-lg" type="submit">Record Expense</button>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-secondary btn-lg">Cancel</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const expenseSelect = document.getElementById('debit_account_id');
+        const inventoryDiv = document.getElementById('inventory_item_div');
+        const inventorySelect = document.getElementById('inventory_item_id');
+        const quantityDiv = document.getElementById('quantity_div'); // Get the quantity div
+        const allInventoryItems = {{ inventory_items | tojson }};
+
+        function updateInventoryDropdown() {
+            const selectedOption = expenseSelect.options[expenseSelect.selectedIndex];
+            const category = selectedOption.getAttribute('data-category');
+            const relevantItems = allInventoryItems.filter(item => item.category === category);
+
+            // Always clear previous options
+            inventorySelect.innerHTML = '';
+            // Add the default "Don't update" option
+            inventorySelect.add(new Option("Don't update inventory", ""));
+
+            if (relevantItems.length > 0) {
+                inventoryDiv.style.display = 'block';
+                relevantItems.forEach(item => {
+                    inventorySelect.add(new Option(item.name, item.id));
+                });
+            } else {
+                inventoryDiv.style.display = 'none';
+            }
+            // Trigger a change event to update the quantity field visibility
+            inventorySelect.dispatchEvent(new Event('change'));
+        }
+
+        function updateQuantityVisibility() {
+            // If a valid item ID is selected (not the empty "" option)
+            if (inventorySelect.value) {
+                quantityDiv.style.display = 'block';
+            } else {
+                quantityDiv.style.display = 'none';
+            }
+        }
+
+        expenseSelect.addEventListener('change', updateInventoryDropdown);
+        inventorySelect.addEventListener('change', updateQuantityVisibility);
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Chart of Accounts{% endblock %}
+
+{% block content %}
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Chart of Accounts</h1>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAccountModal">
+            <i class="bi bi-plus-circle-fill"></i> Add New Account
+        </button>
+    </div>
+
+    <!-- KPI Cards showing the Accounting Equation: Assets = Liabilities + Equity -->
+    <div class="row">
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Assets</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(totals.assets) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-building fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Total Liabilities</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(totals.liabilities) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-truck fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Equity</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(totals.equity) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-person-heart fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Accounts Accordion -->
+    <div class="accordion" id="chartOfAccountsAccordion">
+        {% for account_type, data in accounts_by_type.items() %}
+        <div class="accordion-item shadow-sm mb-2">
+            <h2 class="accordion-header" id="heading-{{ account_type }}">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ account_type }}" aria-expanded="false" aria-controls="collapse-{{ account_type }}">
+                    <strong class="me-3">{{ account_type }}</strong>
+                    <span class="badge bg-secondary">Total: ₦{{ '{:,.2f}'.format(data.total) }}</span>
+                </button>
+            </h2>
+            <div id="collapse-{{ account_type }}" class="accordion-collapse collapse" aria-labelledby="heading-{{ account_type }}" data-bs-parent="#chartOfAccountsAccordion">
+                <div class="accordion-body p-0">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr class="table-light"><th>Code</th><th>Name</th><th class="text-end">Balance</th><th class="text-center">Actions</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for account in data.accounts %}
+                            <tr>
+                                <td>{{ account.code }}</td>
+                                <td>{{ account.name }}</td>
+                                <td class="text-end fw-bold">₦{{ '{:,.2f}'.format(account.balance) }}</td>
+                                <td class="text-center">
+                                    {# --- THIS IS THE FIX --- #}
+                                    {# Only show the Ledger button if the account has an ID. #}
+                                    {# This prevents an error on the calculated "Retained Earnings" line. #}
+                                    {% if account.id %}
+                                        <a href="{{ url_for('account_ledger', account_id=account.id) }}" class="btn btn-sm btn-outline-primary" title="View Ledger"><i class="bi bi-journal-text"></i> Ledger</a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Add New Account Modal -->
+    <div class="modal fade" id="addAccountModal" tabindex="-1" aria-labelledby="addAccountModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title" id="addAccountModalLabel">Add New Account</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-body">
+                    <form action="{{ url_for('add_account') }}" method="POST">
+                        <div class="mb-3"><label class="form-label">Account Name</label><input type="text" class="form-control" name="name" required></div>
+                        <div class="mb-3"><label class="form-label">Account Code</label><input type="text" class="form-control" name="code" placeholder="e.g., 1010 for Cash" required></div>
+                        <div class="mb-3">
+                            <label class="form-label">Account Type</label>
+                            <select class="form-select" name="type" required>
+                                <option selected disabled value="">Choose...</option>
+                                <option value="Asset">Asset</option><option value="Liability">Liability</option><option value="Equity">Equity</option>
+                                <option value="Revenue">Revenue</option><option value="Expense">Expense</option>
+                            </select>
+                        </div>
+                        <div class="mb-3"><label class="form-label">Opening Balance (₦)</label><input type="number" class="form-control" name="opening_balance" value="0.00" step="0.01" required></div>
+                        <hr><button type="submit" class="btn btn-primary">Save Account</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block head_styles %}
+<style>
+    .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
+    .border-left-success { border-left: 0.25rem solid #1cc88a !important; }
+    .border-left-danger { border-left: 0.25rem solid #e74a3b !important; }
+    .text-xs { font-size: .9rem; }
+    .text-gray-800 { color: #5a5c69 !important; }
+    .text-gray-300 { color: #dddfeb !important; }
+    .accordion-button:not(.collapsed) { background-color: #e7f1ff; color: #0d6efd; }
+</style>
+{% endblock %}

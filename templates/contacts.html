@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{% if g.user %}{{ g.user.farm_name }}{% endif %} - Contact Management{% endblock %}
+
+{% block content %}
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Contact Management</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addContactModal">
+                <i class="bi bi-person-plus-fill"></i> Add New Contact
+            </button>
+        </div>
+    </div>
+
+    <!-- KPI Stats Cards (This section is perfect) -->
+    <div class="row">
+        <!-- ... (your three stats cards are perfect, no changes needed) ... -->
+    </div>
+
+    <!-- Contacts Table -->
+    <div class="card shadow">
+        <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+            <h6 class="m-0 font-weight-bold text-primary">Contacts List</h6>
+            <form method="GET" action="{{ url_for('contacts_dashboard') }}" class="d-flex">
+                <input type="text" class="form-control form-control-sm" placeholder="Search contacts..." name="q" value="{{ request.args.get('q', '') }}">
+                <button class="btn btn-sm btn-primary ms-2" type="submit"><i class="bi bi-search"></i></button>
+            </form>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Name</th><th>Type</th><th>Contact Info</th>
+                            <th class="text-end">Current Balance</th><th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for contact in contacts_list %}
+                        <tr>
+                            <td><strong>{{ contact.name }}</strong></td>
+                            <td>{{ contact.type }}</td>
+                            <td>
+                                {% if contact.phone %}<i class="bi bi-telephone-fill text-muted"></i> {{ contact.phone }}<br>{% endif %}
+                                {% if contact.email %}<i class="bi bi-envelope-fill text-muted"></i> {{ contact.email }}{% endif %}
+                            </td>
+                            <td class="text-end">
+                                <!-- ... (your balance display logic is perfect) ... -->
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    <a href="{{ url_for('contact_ledger', contact_id=contact.id) }}" class="btn btn-sm btn-outline-primary" title="View Ledger"><i class="bi bi-journal-text"></i> Ledger</a>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false"><span class="visually-hidden">Toggle Dropdown</span></button>
+                                    <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item" href="{{ url_for('edit_contact', contact_id=contact.id) }}"><i class="bi bi-pencil-fill me-2"></i>Edit Contact</a></li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <form action="{{ url_for('delete_contact', contact_id=contact.id) }}" method="POST" onsubmit="return confirm('Are you sure?');" class="d-inline">
+                                                <button type="submit" class="dropdown-item text-danger"><i class="bi bi-trash-fill me-2"></i>Delete Contact</button>
+                                            </form>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-4">No contacts found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# --- THIS IS THE CORRECT PLACEMENT FOR THE MODAL --- #}
+    {# It is INSIDE the content block, but after the main table #}
+    <div class="modal fade" id="addContactModal" tabindex="-1" aria-labelledby="addContactModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addContactModalLabel">Add New Contact</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form action="{{ url_for('add_contact') }}" method="POST">
+                        <div class="mb-3"><label class="form-label">Name</label><input type="text" class="form-control" name="name" required></div>
+                        <div class="mb-3">
+                            <label class="form-label">Contact Type</label>
+                            <select class="form-select" name="type" required>
+                                <option selected disabled value="">Choose...</option><option value="Customer">Customer</option><option value="Supplier">Supplier</option><option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="mb-3"><label class="form-label">Phone</label><input type="tel" class="form-control" name="phone"></div>
+                        <div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" name="email"></div>
+                        <hr>
+                        <div class="text-end">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="submit" class="btn btn-primary">Save Contact</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+
+{% block head_styles %}
+<style>
+    /* ... (your custom styles are perfect, no changes needed) ... */
+</style>
+{% endblock %}

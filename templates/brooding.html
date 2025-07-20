@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}Brooding Management{% endblock %}
+
+{% block content %}
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2"><i class="bi bi-egg me-2"></i>Brooding Section</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addBatchModal">
+                <i class="bi bi-plus-circle-fill"></i> New Brooding Batch
+            </button>
+        </div>
+    </div>
+
+    <!-- Active Brooding Batches Table -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">Active Batches</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Batch Name / Breed</th>
+                            <th>Arrival Date</th>
+                            <th class="text-center">Initial / Current Count</th>
+                            <th class="text-center">Mortality</th>
+                            <th class="text-end">Total Running Cost</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for batch in active_batches %}
+                        <tr>
+                            <td>
+                                <strong>{{ batch.batch_name }}</strong><br>
+                                <small class="text-muted">{{ batch.breed }}</small>
+                            </td>
+                            <td>{{ batch.arrival_date }}</td>
+                            <td class="text-center">
+                                {{ batch.initial_chick_count }} / <strong>{{ batch.current_chick_count }}</strong>
+                            </td>
+                            <td class="text-center text-danger">{{ batch.total_mortality }}</td>
+                            <td class="text-end">₦{{ '{:,.2f}'.format(batch.initial_cost + batch.running_feed_cost) }}</td>
+                            <td class="text-center">
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#logUsageModal" data-batch-id="{{ batch.id }}">Log Usage</button>
+                                    <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#logMortalityModal" data-batch-id="{{ batch.id }}">Log Mortality</button>
+                                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#transferBatchModal" data-batch-id="{{ batch.id }}">Transfer to Flock</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center p-4 text-muted">No active brooding batches found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- MODALS -->
+
+    <!-- Add New Brooding Batch Modal -->
+<div class="modal fade" id="addBatchModal" tabindex="-1" aria-labelledby="addBatchModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addBatchModalLabel">Add New Brooding Batch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('add_brooding_batch') }}" method="POST">
+                    <div class="mb-3">
+                        <label for="batch_name" class="form-label">Batch Name</label>
+                        <input type="text" class="form-control" name="batch_name" placeholder="e.g., July Week 2 Layers" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="breed" class="form-label">Breed</label>
+                        <input type="text" class="form-control" name="breed" placeholder="e.g., Isa Brown">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="arrival_date" class="form-label">Arrival Date</label>
+                            <input type="date" class="form-control" name="arrival_date" value="{{ today_date }}" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="initial_chick_count" class="form-label">Initial Chick Count</label>
+                            <input type="number" class="form-control" name="initial_chick_count" min="1" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="initial_cost" class="form-label">Total Purchase Cost (₦)</label>
+                        <div class="input-group">
+                            <span class="input-group-text">₦</span>
+                            <input type="number" step="0.01" class="form-control" name="initial_cost" placeholder="Total cost for all chicks" required>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Save New Batch</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <!-- Log Feed/Meds Usage Modal -->
+<div class="modal fade" id="logUsageModal" tabindex="-1" aria-labelledby="logUsageModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="logUsageModalLabel">Log Feed/Medicine Usage</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('log_inventory_usage') }}" method="POST">
+                    <!-- This hidden input is filled by JavaScript -->
+                    <input type="hidden" name="brooding_batch_id" class="batch-id-input">
+                    <input type="hidden" name="log_date" value="{{ today_date }}">
+
+                    <div class="mb-3">
+                        <label for="inventory_item_id" class="form-label">Supply Item (Feed/Meds)</label>
+                        <select class="form-select" name="inventory_item_id" required>
+                            <option value="" disabled selected>-- Select a supply item --</option>
+                            {% for item in brooding_supplies %}
+                                <option value="{{ item.id }}">{{ item.name }} (Available: {{ item.quantity }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="quantity_used" class="form-label">Quantity Used</label>
+                        <input type="number" step="any" class="form-control" name="quantity_used" min="0" required>
+                    </div>
+                    <hr>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-info">Log Usage</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+    <!-- Log Mortality Modal -->
+<div class="modal fade" id="logMortalityModal" tabindex="-1" aria-labelledby="logMortalityModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="logMortalityModalLabel">Log Daily Mortality</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('log_brooding_mortality') }}" method="POST">
+                    <!-- This hidden input is filled by JavaScript -->
+                    <input type="hidden" name="batch_id" class="batch-id-input">
+
+                    <div class="mb-3">
+                        <label for="mortality_log_date" class="form-label">Date</label>
+                        <input type="date" class="form-control" name="log_date" id="mortality_log_date" value="{{ today_date }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="mortality_count" class="form-label">Number of Mortalities</label>
+                        <input type="number" class="form-control" name="mortality_count" id="mortality_count" min="0" required>
+                    </div>
+                    <hr>
+                    <div class="d-grid">
+                         <button type="submit" class="btn btn-warning">Record Mortalities</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+    <!-- Transfer Batch to Flock Modal -->
+    <!-- Transfer Batch to Flock Modal -->
+<div class="modal fade" id="transferBatchModal" tabindex="-1" aria-labelledby="transferBatchModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="transferBatchModalLabel">Transfer Batch to Active Flock</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('transfer_brooding_batch') }}" method="POST" onsubmit="return confirm('Are you sure? This will finalize all costs for this batch and transfer the birds.');">
+                    <!-- This hidden input is filled by JavaScript -->
+                    <input type="hidden" name="batch_id" class="batch-id-input">
+
+                    <div class="mb-3">
+                        <label for="transfer_date" class="form-label">Date of Transfer</label>
+                        <input type="date" class="form-control" name="transfer_date" id="transfer_date" value="{{ today_date }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="target_flock_id" class="form-label">Transfer To Flock:</label>
+                        <select class="form-select" name="target_flock_id" id="target_flock_id" required>
+                            <option value="" disabled selected>-- Select a target flock --</option>
+                            {% for flock in active_flocks %}
+                                <option value="{{ flock.id }}">{{ flock.flock_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="alert alert-info small">
+                        <i class="bi bi-info-circle-fill"></i>
+                        The system will automatically calculate the total cost (purchase + feed + meds) and the final cost per surviving bird before adding them to the selected flock.
+                    </div>
+                    <hr>
+                    <div class="d-grid">
+                         <button type="submit" class="btn btn-success">Confirm and Transfer Batch</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Generic script to pass the batch ID to any modal that needs it
+document.addEventListener('DOMContentLoaded', function() {
+    const modals = document.querySelectorAll('.modal');
+    modals.forEach(modal => {
+        modal.addEventListener('show.bs.modal', function(event) {
+            const button = event.relatedTarget;
+            const batchId = button.getAttribute('data-batch-id');
+            const batchIdInput = modal.querySelector('.batch-id-input');
+            if (batchIdInput) {
+                batchIdInput.value = batchId;
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

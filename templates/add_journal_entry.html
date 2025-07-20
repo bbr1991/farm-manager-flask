@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - Add Journal Entry{% endblock %}
+
+{% block content %}
+    <h2 class="mb-4">Add New Journal Entry</h2>
+    
+    <div class="card shadow-sm">
+        <div class="card-header"><h5 class="mb-0">Transaction Details</h5></div>
+        <div class="card-body">
+            <!-- We will create the 'add_journal_entry_post' route next -->
+            <form action="{{ url_for('add_journal_entry_post') }}" method="POST">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="transaction_date" class="form-label">Transaction Date</label>
+                        <input type="date" class="form-control" id="transaction_date" name="date" required>
+                    </div>
+                    <div class="col-md-8">
+                        <label for="description" class="form-label">Description</label>
+                        <input type="text" class="form-control" id="description" name="description" placeholder="e.g., Sale of 10 crates of eggs" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="debit_account" class="form-label">Account to Debit (Increase)</label>
+                        <select class="form-select" id="debit_account" name="debit_account_id" required>
+                            <option selected disabled value="">Choose...</option>
+                            {% for acc in accounts_list %}<option value="{{ acc.id }}">{{ acc.name }} ({{ acc.type }})</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="credit_account" class="form-label">Account to Credit (Decrease)</label>
+                        <select class="form-select" id="credit_account" name="credit_account_id" required>
+                            <option selected disabled value="">Choose...</option>
+                            {% for acc in accounts_list %}<option value="{{ acc.id }}">{{ acc.name }} ({{ acc.type }})</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label for="amount" class="form-label">Amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text">₦</span>
+                            <input type="number" class="form-control" id="amount" name="amount" placeholder="0.00" step="0.01" min="0.01" required>
+                        </div>
+                    </div>
+                </div>
+                <hr class="my-4">
+                <button class="btn btn-primary btn-lg" type="submit">Record Entry</button>
+                <a href="{{ url_for('general_journal') }}" class="btn btn-secondary btn-lg">Cancel</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}

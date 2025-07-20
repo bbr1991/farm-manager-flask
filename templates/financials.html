@@ -1,32 +1,81 @@
 {% extends "base.html" %}
 
-{# This now uses the new variables passed from app.py #}
-{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - {{ page_title_tag }}{% endblock %}
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - Bookkeeping{% endblock %}
 
 {% block content %}
-    {# This also uses the new variable for the heading #}
-    <h2 class="mb-3">{{ current_page_title }}</h2>
+    <h2 class="mb-4">Bookkeeping Dashboard</h2>
     
-    <p>Manage your farm's income and expenses. Select an option below to view details.</p>
-    
+    <!-- Key Account Balances (We will make this dynamic later) -->
+    <div class="row mb-4 text-center">
+        <h3 class="mb-3">Key Account Balances</h3>
+        <div class="col-md-4">
+            <div class="card text-white bg-primary shadow">
+                <div class="card-header">Cash on Hand</div>
+                <div class="card-body"><h4 class="card-title">₦ [Data]</h4></div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-secondary shadow">
+                <div class="card-header">Bank Account</div>
+                <div class="card-body"><h4 class="card-title">₦ [Data]</h4></div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-warning shadow">
+                <div class="card-header">Accounts Receivable</div>
+                <div class="card-body"><h4 class="card-title">₦ [Data]</h4></div>
+            </div>
+        </div>
+    </div>
+
+    <hr>
+
+    <!-- Quick Actions -->
     <div class="row mt-4">
-        <div class="col-md-6 mb-3">
-            <div class="card">
-                <div class="card-body text-center">
-                    <h5 class="card-title">Income Records</h5>
-                    <p class="card-text">View and manage all sources of farm income.</p>
-                    <a href="{{ url_for('income') }}" class="btn btn-success">Go to Income</a>
+        <h3 class="mb-3">Quick Actions</h3>
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body text-center d-flex flex-column">
+                    <h5 class="card-title">General Journal</h5>
+                    <p class="card-text">Manually enter debit and credit transactions between any two accounts.</p>
+                    <a href="#" class="btn btn-info mt-auto disabled">Add Journal Entry (Coming Soon)</a>
                 </div>
             </div>
         </div>
-        <div class="col-md-6 mb-3">
-            <div class="card">
-                <div class="card-body text-center">
-                    <h5 class="card-title">Expense Records</h5>
-                    <p class="card-text">Track and categorize all farm expenses.</p>
-                    <a href="{{ url_for('expenses') }}" class="btn btn-danger">Go to Expenses</a>
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body text-center d-flex flex-column">
+                    <h5 class="card-title">Chart of Accounts</h5>
+                    <p class="card-text">View, add, and manage all your financial accounts (ledgers).</p>
+                    <a href="{{ url_for('chart_of_accounts') }}" class="btn btn-secondary mt-auto">Manage Accounts</a>
                 </div>
             </div>
         </div>
     </div>
+
+    <hr>
+
+    <!-- Simple, Old System (For reference) -->
+    <div class="row mt-4">
+        <h3 class="mb-3">Simple Entry (Old System)</h3>
+        <div class="col-md-6 mb-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Income Records (Simple)</h5>
+                    <p class="card-text">View and manage simple income records.</p>
+                    <a href="{{ url_for('income') }}" class="btn btn-success">Go to Simple Income</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Expense Records (Simple)</h5>
+                    <p class="card-text">Track and categorize simple expenses.</p>
+                    <a href="{{ url_for('expenses') }}" class="btn btn-danger">Go to Simple Expenses</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
 {% endblock %}

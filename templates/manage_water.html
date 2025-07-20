@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - Water Production{% endblock %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Water Production Log</h2>
+        <!-- This can link to a page to manage the product types -->
+        <a href="#" class="btn btn-primary disabled">Manage Water Products (Coming Soon)</a>
+    </div>
+    
+    <div class="row">
+        <!-- Column for the Log Production Form -->
+        <div class="col-md-5">
+            <div class="card shadow-sm">
+                <div class="card-header"><h5 class="mb-0">Log Daily Production</h5></div>
+                <div class="card-body">
+                    <!-- We will create the 'log_water_production' route next -->
+                    <form action="{{ url_for('log_water_production') }}" method="POST">
+                        <div class="mb-3">
+                            <label for="production_date" class="form-label">Production Date</label>
+                            <input type="date" class="form-control" id="production_date" name="production_date" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="product_id" class="form-label">Select Product</label>
+                            {# --- THIS IS THE FIX: The dropdown now gets populated --- #}
+                            <select class="form-select" id="product_id" name="product_id" required>
+                                <option selected disabled value="">Choose a product...</option>
+                                {% for product in products_list %}
+                                <option value="{{ product.id }}">{{ product.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="liters_produced" class="form-label">Liters Produced</label>
+                            <input type="number" class="form-control" id="liters_produced" name="liters_produced" step="any" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="notes" class="form-label">Notes (Optional)</label>
+                            <textarea class="form-control" id="notes" name="notes" rows="2"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success">Log Production</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column for the Production Log History -->
+        <div class="col-md-7">
+            <div class="card shadow-sm">
+                <div class="card-header"><h5 class="mb-0">Recent Production History</h5></div>
+                <div class="card-body">
+                    <table class="table table-sm table-striped">
+                        <thead><tr><th>Date</th><th>Product</th><th>Liters</th></tr></thead>
+                        <tbody>
+                            {% if production_logs %}
+                                {% for log in production_logs %}
+                                <tr>
+                                    <td>{{ log.production_date }}</td>
+                                    <td>{{ log.product_name }}</td>
+                                    <td>{{ log.liters_produced }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr><td colspan="3" class="text-center">No production logged yet.</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}Record New Sale (POS){% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Record New Sale (POS)</h2>
+
+<div class="row">
+    <!-- Left Side: Item Selection -->
+    <div class="col-lg-5">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header"><h5 class="mb-0">Add Item to Sale</h5></div>
+            <div class="card-body">
+                <div id="add-item-form">
+                    <div class="mb-3">
+                        <label for="inventory_item_id" class="form-label">Select Item</label>
+                        <select class="form-select" id="inventory_item_id">
+                            <option selected disabled value="">Choose an item...</option>
+                            {% for item in inventory_items %}
+                                <option value="{{ item.id }}" data-price="{{ item.sale_price }}" data-name="{{ item.name }}" data-available="{{ item.quantity }}">
+                                    {{ item.name }} (Available: {{ item.quantity }}) - ₦{{ '{:,.2f}'.format(item.sale_price) }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quantity_sold" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="quantity_sold" step="any" min="0.1">
+                    </div>
+                    <div class="d-grid">
+                        <button type="button" class="btn btn-primary" id="add-item-btn">Add Item to Sale</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Side: Sale Summary and Completion -->
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-header"><h5 class="mb-0">Current Sale</h5></div>
+            <div class="card-body">
+                <form action="{{ url_for('add_sale_post') }}" method="POST" id="complete-sale-form">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label for="date" class="form-label">Date of Sale</label>
+                            <input type="date" class="form-control" id="date" name="date" required>
+                        </div>
+                        
+                        <!-- ====================================================== -->
+                        <!-- THIS IS THE ADJUSTED SECTION FOR ACCOUNT RESTRICTION -->
+                        <!-- ====================================================== -->
+                        <div class="col-md-6">
+                            <label class="form-label">Payment Received In</label>
+                            
+                            {# If the list of accounts has only ONE item, it must be a cashier #}
+                            {% if asset_accounts and asset_accounts|length == 1 %}
+                                
+                                {# We get the single account from the list #}
+                                {% set account = asset_accounts[0] %}
+                                
+                                {# Display its name as un-editable text for clarity #}
+                                <p class="form-control-plaintext bg-light border rounded px-2 py-1"><strong>{{ account.name }}</strong></p>
+                                
+                                {# IMPORTANT: We still need to send the ID, so we use a hidden input. #}
+                                <input type="hidden" name="debit_account_id" value="{{ account.id }}">
+
+                            {# Otherwise, it's an admin/manager, so show the full dropdown. #}
+                            {% else %}
+                            
+                                <select class="form-select" id="debit_account_id" name="debit_account_id" required>
+                                    <option value="" disabled selected>-- Select Account --</option>
+                                    {% for account in asset_accounts %}
+                                        <option value="{{ account.id }}">{{ account.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                
+                            {% endif %}
+                        </div>
+                        <!-- =================== END OF ADJUSTED SECTION ==================== -->
+
+                    </div>
+
+                    <h5 class="mb-3">Items in Sale</h5>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th class="text-center">Qty</th>
+                                <th class="text-end">Subtotal</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="sale-items-table">
+                            <tr id="no-items-row">
+                                <td colspan="4" class="text-center text-muted">No items added yet.</td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th colspan="2" class="text-end fs-5">Grand Total:</th>
+                                <th class="text-end fs-5" id="grand-total">₦0.00</th>
+                                <th></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+
+                    <div id="hidden-inputs-container"></div>
+                    <input type="hidden" name="total_amount" id="hidden-total-amount" value="0">
+                    
+                    <hr class="my-4">
+                    <button class="btn btn-success btn-lg" type="submit">Complete Sale</button>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary btn-lg">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Your existing JavaScript code is perfect and needs no changes.
+// I'm keeping it exactly as you provided it.
+document.addEventListener('DOMContentLoaded', function() {
+    // --- Element References ---
+    const addItemBtn = document.getElementById('add-item-btn');
+    const itemSelect = document.getElementById('inventory_item_id');
+    const quantityInput = document.getElementById('quantity_sold');
+    const saleItemsTable = document.getElementById('sale-items-table');
+    const noItemsRow = document.getElementById('no-items-row');
+    const grandTotalEl = document.getElementById('grand-total');
+    const hiddenInputsContainer = document.getElementById('hidden-inputs-container');
+    const hiddenTotalAmountInput = document.getElementById('hidden-total-amount');
+
+    // Set default date to today
+    document.getElementById('date').valueAsDate = new Date();
+
+    let saleItems = [];
+    let itemIndex = 0;
+
+    // --- Event Listeners ---
+    addItemBtn.addEventListener('click', addItemToSale);
+    
+    saleItemsTable.addEventListener('click', function(e) {
+        if (e.target && e.target.classList.contains('remove-item-btn')) {
+            const rowToRemove = e.target.closest('tr');
+            const indexToRemove = parseInt(rowToRemove.dataset.index, 10);
+            removeItemFromSale(indexToRemove);
+        }
+    });
+
+    // --- Functions ---
+    function addItemToSale() {
+        const selectedOption = itemSelect.options[itemSelect.selectedIndex];
+        const quantity = parseFloat(quantityInput.value);
+
+        if (!selectedOption || selectedOption.value === "") {
+            alert('Please select an item.');
+            return;
+        }
+        if (!quantity || quantity <= 0) {
+            alert('Please enter a valid quantity.');
+            return;
+        }
+        
+        const price = parseFloat(selectedOption.getAttribute('data-price')) || 0;
+        
+        if (isNaN(price) || price <= 0) {
+            alert('The selected item does not have a valid price. Please edit the item in your inventory.');
+            return;
+        }
+
+        const availableQty = parseFloat(selectedOption.dataset.available);
+        if (quantity > availableQty) {
+            alert(`Cannot sell ${quantity}. Only ${availableQty} available in inventory.`);
+            return;
+        }
+
+        const item = {
+            id: selectedOption.value,
+            name: selectedOption.dataset.name,
+            price: price,
+            quantity: quantity,
+            index: itemIndex++
+        };
+        
+        saleItems.push(item);
+        renderSaleTable();
+        itemSelect.value = "";
+        quantityInput.value = "";
+        itemSelect.focus();
+    }
+
+    function removeItemFromSale(indexToRemove) {
+        saleItems = saleItems.filter(item => item.index !== indexToRemove);
+        renderSaleTable();
+    }
+
+    function renderSaleTable() {
+        saleItemsTable.innerHTML = '';
+        hiddenInputsContainer.innerHTML = '';
+
+        if (saleItems.length === 0) {
+            saleItemsTable.appendChild(noItemsRow);
+        } else {
+            saleItems.forEach((item, i) => {
+                const subtotal = item.price * item.quantity;
+                const row = document.createElement('tr');
+                row.dataset.index = item.index;
+                
+                row.innerHTML = `
+                    <td>${item.name}<br><small class="text-muted">@ ₦${item.price.toFixed(2)}</small></td>
+                    <td class="text-center">${item.quantity}</td>
+                    <td class="text-end">₦${subtotal.toFixed(2)}</td>
+                    <td class="text-center">
+                        <button type="button" class="btn btn-danger btn-sm remove-item-btn">×</button>
+                    </td>
+                `;
+                saleItemsTable.appendChild(row);
+
+                hiddenInputsContainer.innerHTML += `
+                    <input type="hidden" name="items[${i}][id]" value="${item.id}">
+                    <input type="hidden" name="items[${i}][quantity]" value="${item.quantity}">
+                    <input type="hidden" name="items[${i}][price]" value="${item.price}">
+                `;
+            });
+        }
+        updateGrandTotal();
+    }
+
+    function updateGrandTotal() {
+        const total = saleItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        grandTotalEl.textContent = `₦${total.toFixed(2)}`;
+        hiddenTotalAmountInput.value = total.toFixed(2);
+    }
+});
+</script>
+{% endblock %}

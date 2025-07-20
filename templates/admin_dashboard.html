@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel{% endblock %}
+
+{% block content %}
+    <!-- Page Header -->
+     <!-- Add this new card to a new row in admin_dashboard.html -->
+<div class="form-check mb-3">
+    <div class="card shadow border-danger">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0"><i class="bi bi-archive-fill me-2"></i>Year-End Closing</h5>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-danger">
+                <strong><i class="bi bi-exclamation-octagon-fill"></i> Warning!</strong> This is an irreversible action.
+            </div>
+            <p>This procedure will close all revenue and expense accounts for a selected year and transfer the net profit to Retained Earnings. All transactions for that year will be locked from further editing.</p>
+            
+            <form action="{{ url_for('execute_year_end_close') }}" method="POST" id="year-end-form">
+                <div class="mb-3">
+                    <label for="year_to_close" class="form-label">Select Year to Close:</label>
+                    <select class="form-select" name="year" id="year_to_close" required>
+                        <!-- You would populate this with available years from your data -->
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                    </select>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" value="" id="confirm-check-1">
+                    <label class="form-check-label" for="confirm-check-1">
+                        I understand this will create a final closing journal entry.
+                    </label>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" value="" id="confirm-check-2">
+                    <label class="form-check-label" for="confirm-check-2">
+                        I understand all transactions for this year will be permanently locked.
+                    </label>
+                </div>
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-danger" id="execute-close-btn" disabled>
+                        Execute Year-End Close
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+    {{ super() }} <!-- This includes scripts from base.html -->
+    <script>
+    // JavaScript to enable the button only after both checkboxes are checked
+    document.addEventListener('DOMContentLoaded', function() {
+        const check1 = document.getElementById('confirm-check-1');
+        const check2 = document.getElementById('confirm-check-2');
+        const submitBtn = document.getElementById('execute-close-btn');
+
+        function validateChecks() {
+            if (check1.checked && check2.checked) {
+                submitBtn.disabled = false;
+            } else {
+                submitBtn.disabled = true;
+            }
+        }
+
+        check1.addEventListener('change', validateChecks);
+        check2.addEventListener('change', validateChecks);
+    });
+    </script>
+{% endblock %}
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Admin Dashboard</h1>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createUserModal">
+            <i class="bi bi-person-plus-fill"></i> Create New User
+        </button>
+    </div>
+
+    <!-- KPI (Key Performance Indicator) Stats Cards about the Application -->
+    <div class="row">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Users</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_users }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-people-fill fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Sales Recorded</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_sales }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-cash-coin fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Total Expenses Recorded</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_expenses }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-receipt fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Active Inventory Items</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.inventory_items }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-box-seam-fill fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+<!-- User Management Table -->
+    <div class="card shadow">
+        <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">User Management</h6></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Farm Name</th>
+                            <th>Status</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in all_users %}
+                        <tr>
+                            <td><strong>{{ u.username }}</strong></td>
+                            <td>{{ u.farm_name }}</td>
+                            <td>
+                                {# This logic for 'is_active' is good for the future #}
+                                <span class="badge bg-success">Active</span>
+                            </td>
+                            <td class="text-center">
+                                <div class="btn-group">
+                                    {# --- THIS IS THE NEW PERMISSIONS BUTTON --- #}
+                                    <a href="{{ url_for('edit_user_permissions', user_id=u.id) }}" class="btn btn-sm btn-outline-secondary" title="Edit Permissions"><i class="bi bi-shield-lock-fill"></i> Permissions</a>
+                                    
+                                    <button type="button" class="btn btn-sm btn-outline-danger" title="Delete User" 
+                                            {% if u.id == session.user_id %}disabled{% endif %} 
+                                            onclick="document.getElementById('delete-form-{{ u.id }}').submit();">
+                                        <i class="bi bi-trash-fill"></i>
+                                    </button>
+                                </div>
+                                <form id="delete-form-{{ u.id }}" action="{{ url_for('delete_user', user_id=u.id) }}" method="POST" class="d-none" onsubmit="return confirm('Are you sure?');"></form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create New User Modal -->
+    <div class="modal fade" id="createUserModal" tabindex="-1" aria-labelledby="createUserModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title" id="createUserModalLabel">Create New User Account</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-body">
+                    <form action="{{ url_for('admin_create_user') }}" method="POST">
+                        <div class="mb-3"><label class="form-label">Username</label><input type="text" class="form-control" name="username" required></div>
+                        <div class="mb-3"><label class="form-label">Farm Name</label><input type="text" class="form-control" name="farm_name" required></div>
+                        <div class="mb-3"><label class="form-label">Email Address</label><input type="email" class="form-control" name="email" required></div>
+                        <div class="mb-3"><label class="form-label">Temporary Password</label><input type="password" class="form-control" name="password" required></div>
+                        
+                        {# --- THE ROLE SELECTOR IS REMOVED --- #}
+                        {# We now assign permissions on a separate page #}
+                        
+                        <hr><button type="submit" class="btn btn-primary">Create User</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6 mb-4">
+    <div class="card shadow">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0"><i class="bi bi-lock-fill me-2"></i>End of Day Operations</h5>
+        </div>
+        <div class="card-body">
+            
+            {% if is_today_closed %}
+                <div class="alert alert-success text-center">
+                    <h4 class="alert-heading">Today's Transactions are Closed</h4>
+                    <p class="mb-0">All entries for today are final. No further non-admin posts are allowed.</p>
+                </div>
+            {% else %}
+                <p>Use this tool to close the day's transactions. Once closed, only administrators can post entries to this date.</p>
+                <form action="{{ url_for('close_day') }}" method="POST" onsubmit="return confirm('Are you sure you want to close this day? This action cannot be easily undone.');">
+                    <div class="mb-3">
+                        <label for="closure_date" class="form-label">Date to Close:</label>
+                        <input type="date" name="closure_date" class="form-control" value="{{ now.strftime('%Y-%m-%d') }}" required>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-lock-fill"></i> Close Day's Transactions
+                        </button>
+                    </div>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block head_styles %}
+<style>
+    .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
+    .border-left-success { border-left: 0.25rem solid #1cc88a !important; }
+    .border-left-danger { border-left: 0.25rem solid #e74a3b !important; }
+    .border-left-info { border-left: 0.25rem solid #36b9cc !important; }
+    .text-xs { font-size: .9rem; }
+    .text-gray-800 { color: #5a5c69 !important; }
+    .text-gray-300 { color: #dddfeb !important; }
+</style>
+{% endblock %}

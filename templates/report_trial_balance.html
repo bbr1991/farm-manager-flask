@@ -1,0 +1,57 @@
+{% extends "_report_base.html" %}
+
+{# 1. Define the report's title #}
+{% set report_title = "Trial Balance" %}
+
+{# 2. This is the main content block for the report #}
+{% block report_content %}
+    {# Only show the report if the backend has sent data #}
+    {% if data and data.accounts %}
+        <table class="table">
+            <thead class="table-light">
+                <tr>
+                    <th>Account Code</th>
+                    <th>Account Name</th>
+                    <th class="text-end">Debits (DR)</th>
+                    <th class="text-end">Credits (CR)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {# Loop through the accounts provided by the backend #}
+                {% for account in data.accounts %}
+                <tr>
+                    <td>{{ account.code }}</td>
+                    <td>{{ account.name }}</td>
+                    <td class="text-end">{% if account.debit > 0 %}₦{{ '{:,.2f}'.format(account.debit) }}{% endif %}</td>
+                    <td class="text-end">{% if account.credit > 0 %}₦{{ '{:,.2f}'.format(account.credit) }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold table-dark">
+                    <td colspan="2" class="text-end">Totals:</td>
+                    {# Access the totals from the 'data' dictionary #}
+                    <td class="text-end">₦{{ '{:,.2f}'.format(data.total_debits) }}</td>
+                    <td class="text-end">₦{{ '{:,.2f}'.format(data.total_credits) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        {# This is the balance check, which should not be printed #}
+        <div class="no-print mt-3">
+            {% if (data.total_debits - data.total_credits)|abs > 0.01 %}
+                <div class="alert alert-danger">
+                    <strong>Warning!</strong> Debits do not equal Credits. The books are out of balance.
+                </div>
+            {% else %}
+                <div class="alert alert-success">
+                    <strong>Success!</strong> Debits equal Credits. The books are balanced.
+                </div>
+            {% endif %}
+        </div>
+
+    {% else %}
+        {# This message shows if the user hasn't generated a report yet #}
+        <p class="text-center text-muted">Please select a date and click "Generate" to view the report.</p>
+    {% endif %}
+{% endblock %}
