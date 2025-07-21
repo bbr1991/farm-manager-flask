@@ -12,6 +12,7 @@
     
     <!-- Your Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     
     {% block head_styles %}{% endblock %}
 </head>
@@ -101,6 +102,18 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Your Custom JS -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-    {% block scripts %}{% endblock %}
+{% block scripts %}{% endblock %}
+
+<script>
+  // Register the Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}")
+      .then(function(registration) {
+        console.log('Service Worker registered with scope:', registration.scope);
+      }).catch(function(error) {
+        console.log('Service Worker registration failed:', error);
+      });
+  }
+</script>
 </body>
 </html>
