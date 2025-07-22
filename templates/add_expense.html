@@ -1,56 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Record New Expense{% endblock %}
+
+{% block content %}
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Record New Expense</h1>
+    </div>
+    <div class="card shadow-sm">
+        <div class="card-header"><h5 class="mb-0">Expense Details</h5></div>
+        <div class="card-body">
+            {# IMPORTANT: We must add the id="expense-form" here! #}
+            <form action="{{ url_for('add_expense_post') }}" method="POST" id="expense-form">
+                <div class="row g-3">
+                    <div class="col-md-6"><label for="date" class="form-label">Date</label><input type="date" class="form-control" id="date" name="date" required></div>
+                    <div class="col-md-6"><label for="contact_id" class="form-label">Paid To (Supplier)</label><select class="form-select" id="contact_id" name="contact_id"><option value="" selected>N/A</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></div>
+                    <div class="col-12"><label for="description" class="form-label">Description</label><input type="text" class="form-control" id="description" name="description" required placeholder="e.g., 50 bags of Starter Feed"></div>
+                    
+                    <div class="col-md-6">
+                        <label for="debit_account_id" class="form-label">Expense Category (Debit)</label>
+                        <select class="form-select" id="debit_account_id" name="debit_account_id" required>
+                            <option selected disabled value="">Choose expense type...</option>
+                            {% for acc in expense_accounts %}<option value="{{ acc.id }}" data-category="{{ acc.name.replace(' Expense', '') }}">{{ acc.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="credit_account_id" class="form-label">Paid From (Credit)</label>
+                        <select class="form-select" id="credit_account_id" name="credit_account_id" required>
+                             <option selected disabled value="">Choose payment source...</option>
+                            {% for acc in asset_accounts %}<option value="{{ acc.id }}">{{ acc.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    
+                    <!-- Smart fields that appear when needed -->
+                    <div class="col-md-6" id="inventory_item_div" style="display: none;">
+                        <label for="inventory_item_id" class="form-label">Update Inventory Item Stock</label>
+                        <select class="form-select" id="inventory_item_id" name="inventory_item_id"></select>
+                    </div>
+                    <div class="col-md-3" id="quantity_div" style="display: none;">
+                        <label for="quantity_purchased" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="quantity_purchased" name="quantity_purchased" step="any">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="amount" class="form-label">Total Amount Paid (₦)</label>
+                        <input type="number" class="form-control" id="amount" name="amount" step="0.01" min="0.01" required>
+                    </div>
+                </div>
+                <hr class="my-4">
+                <button class="btn btn-danger btn-lg" type="submit">Record Expense</button>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-secondary btn-lg">Cancel</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+
+
+{# This is the one and only scripts block #}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/idb.js') }}"></script>
-<script>
-    // Wait until the entire page is loaded before running our script
-    document.addEventListener('DOMContentLoaded', (event) => {
-        console.log("DOM fully loaded and parsed");
+    {# First, call super() to get Bootstrap, etc. from base.html #}
+    {{ super() }}
 
-        const expenseForm = document.getElementById('expense-form');
-        if (!expenseForm) {
-            console.error("Critical error: Could not find #expense-form!");
-            return;
-        }
-        console.log("Found form:", expenseForm);
-
-        expenseForm.addEventListener('submit', (submitEvent) => {
-            console.log("Form submission event triggered.");
-            
-            // Always prevent the default submission right away
-            submitEvent.preventDefault();
-
-            // Now, check the network status
-            if (navigator.onLine) {
-                // If we are ONLINE, we submit the form normally.
-                console.log("Network status: ONLINE. Submitting to server.");
-                expenseForm.submit();
-            } else {
-                // If we are OFFLINE, we save to IndexedDB.
-                console.log("Network status: OFFLINE. Saving to IndexedDB.");
-
-                const formData = new FormData(expenseForm);
-                const expenseData = {
-                    date: formData.get('date'),
-                    description: formData.get('description'),
-                    amount: formData.get('amount'),
-                    payment_account_id: formData.get('payment_account_id'),
-                    expense_category_id: formData.get('expense_category_id')
-                };
-                console.log("Offline data captured:", expenseData);
-
-                saveExpense(expenseData)
-                    .then(() => navigator.serviceWorker.ready)
-                    .then(registration => registration.sync.register('sync-new-expenses'))
-                    .then(() => {
-                        console.log("Background sync registered successfully.");
-                        alert("You are offline. Expense saved locally. It will sync automatically when you reconnect.");
-                        window.location.href = "{{ url_for('dashboard') }}";
-                    })
-                    .catch(error => {
-                        console.error("Error saving expense locally:", error);
-                        alert("Could not save the expense locally. Please check the console for errors.");
-                    });
-            }
+    {# Second, add your original smart script for inventory fields #}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // ... your smart JS to show/hide inventory fields goes here ...
+            // This part is important for your page's interactivity.
         });
-    });
-</script>
+    </script>
+
+    {# Third, add our new offline database and form handling logic #}
+    <script src="{{ url_for('static', filename='js/idb.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', (event) => {
+            console.log("DOM fully loaded and parsed for offline logic.");
+
+            const expenseForm = document.getElementById('expense-form');
+            if (!expenseForm) {
+                console.error("Critical error: Could not find #expense-form!");
+                return;
+            }
+
+            expenseForm.addEventListener('submit', (submitEvent) => {
+                submitEvent.preventDefault(); // Always prevent default submission
+
+                if (navigator.onLine) {
+                    console.log("Network status: ONLINE. Submitting to server.");
+                    expenseForm.submit();
+                } else {
+                    console.log("Network status: OFFLINE. Saving to IndexedDB.");
+                    const formData = new FormData(expenseForm);
+                    const expenseData = {
+                        date: formData.get('date'),
+                        description: formData.get('description'),
+                        amount: formData.get('amount'),
+                        payment_account_id: formData.get('credit_account_id'), // Correct field name
+                        expense_category_id: formData.get('debit_account_id')  // Correct field name
+                    };
+                    
+                    saveExpense(expenseData)
+                        .then(() => navigator.serviceWorker.ready)
+                        .then(registration => registration.sync.register('sync-new-expenses'))
+                        .then(() => {
+                            alert("You are offline. Expense saved locally and will sync automatically when you reconnect.");
+                            window.location.href = "{{ url_for('dashboard') }}";
+                        })
+                        .catch(error => {
+                            console.error("Error saving expense locally:", error);
+                            alert("Could not save the expense locally. Check console for errors.");
+                        });
+                }
+            });
+        });
+    </script>
 {% endblock %}
