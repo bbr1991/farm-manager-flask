@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PWA Test</title>
+</head>
+<body>
+    <h1>PWA Registration Test Page</h1>
+    <p>Check the console for messages.</p>
+
+    <script>
+      // This is the only script on the page.
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/sw.js')
+          .then(reg => {
+            console.log('MINIMAL TEST: Registration successful, scope is:', reg.scope);
+            document.body.innerHTML += '<p style="color: green;">SUCCESS! Service Worker registered.</p>';
+          })
+          .catch(err => {
+            console.error('MINIMAL TEST: Registration failed:', err);
+            document.body.innerHTML += `<p style="color: red;">FAILURE! ${err}</p>`;
+          });
+      } else {
+        console.log('Service workers are not supported in this browser.');
+        document.body.innerHTML += '<p style="color: orange;">Service workers are not supported.</p>';
+      }
+    </script>
+</body>
+</html>

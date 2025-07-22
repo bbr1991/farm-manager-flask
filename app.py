@@ -28,6 +28,10 @@ app.config['SECRET_KEY'] = 'a_very_good_and_long_production_secret_key_!@#$%'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 bcrypt = Bcrypt(app)
 DATABASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'farm_data.db')
+@app.route('/test_pwa')
+def test_pwa():
+    """A minimal page to test PWA registration."""
+    return render_template('test_pwa.html')
 # ==============================================================================
 # 2. DATABASE CONNECTION HANDLING
 # ==============================================================================
