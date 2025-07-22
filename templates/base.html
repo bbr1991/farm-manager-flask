@@ -12,6 +12,8 @@
     
     <!-- Your Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    <!-- Link to the Web App Manifest -->
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     
     {% block head_styles %}{% endblock %}
@@ -97,24 +99,37 @@
         </div>
     </div>
 
-    <!-- JavaScript -->
+    <!-- ====================================================== -->
+    <!-- JAVASCRIPT SECTION -->
+    <!-- ====================================================== -->
+
+    <!-- Core libraries from the internet -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Your Custom JS -->
+    
+    <!-- Your main custom JavaScript file -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-    {## <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script> ##}
-{% block scripts %}{% endblock %}
+    
+    <!-- This is the special block where child pages can add their own scripts. -->
+    <!-- We are commenting out dashboard.js here as an example for the test. -->
+    {% block scripts %}
+        {## <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script> ##}
+    {% endblock %}
 
-<script>
-  // Register the Service Worker
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}")
-      .then(function(registration) {
-        console.log('Service Worker registered with scope:', registration.scope);
-      }).catch(function(error) {
-        console.log('Service Worker registration failed:', error);
-      });
-  }
-</script>
+    <!-- Finally, we register our Service Worker. This should be the last thing before the body closes. -->
+    <script>
+      // We wait for the entire window to be loaded before registering the worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}")
+            .then(registration => {
+              console.log('PWA Service Worker registered with scope:', registration.scope);
+            })
+            .catch(error => {
+              console.log('PWA Service Worker registration failed:', error);
+            });
+        });
+      }
+    </script>
 </body>
 </html>
