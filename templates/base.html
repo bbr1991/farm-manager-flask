@@ -112,30 +112,12 @@
     <!-- This is the special block where child pages can add their own scripts. -->
     {% block scripts %}{% endblock %}
 
-    <!-- Finally, we register our Service Worker. This should be the last thing before the body closes. -->
-    <script>
-      // We wait for the entire window to be loaded before registering the worker
+     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.service-worker.register("{{ url_for('static', filename='sw.js') }}")
-            .then(registration => {
-              console.log('PWA Service Worker registered with scope:', registration.scope);
-            })
-            .catch(error => {
-              console.log('PWA Service Worker registration failed:', error);
-            });
-        });
+        navigator.serviceWorker.register('/static/sw.js')
+          .then(reg => console.log('Registration successful, scope is:', reg.scope))
+          .catch(err => console.error('Registration failed:', err));
       }
     </script>
 </body>
-</html>```
-
-**What this code does:**
-
-*   It keeps all your normal HTML structure.
-*   It uses Jinja comments `{## ... #}` to "turn off" the four lines that load files from the `cdn.jsdelivr.net` server.
-*   It **keeps** your local files (`style.css`, `main.js`, `manifest.json`, and the service worker registration).
-
-The page will look ugly, but this is the purest test of the service worker's offline capability.
-
-**Please use this code, deploy it, and then run the "Simple Cache Test" one last time.** This will give us our definitive answer.
+</html>
