@@ -1,5 +1,5 @@
 // Define a name for our cache
-const CACHE_NAME = 'farm-manager-cache-v1';
+const CACHE_NAME = 'farm-manager-cache-v4';
 
 // List all the files that make up the "app shell"
 // These are the files that will be saved so the app can load offline
@@ -64,3 +64,47 @@ self.addEventListener('fetch', function(event) {
     )
   );
 });
+// Listen for the 'sync' event
+self.addEventListener('sync', function(event) {
+    console.log('Service Worker: Sync event fired.', event.tag);
+    if (event.tag === 'sync-new-expenses') {
+        console.log('Service Worker: Syncing new expenses...');
+        event.waitUntil(syncNewExpenses());
+    }
+});
+
+// Function to handle the synchronization
+function syncNewExpenses() {
+    // We need to import the idb script because the service worker runs in a different context
+    importScripts('/static/js/idb.js');
+    
+    return getPendingExpenses().then(expenses => {
+        const syncPromises = expenses.map(expense => {
+            console.log('Attempting to sync expense:', expense);
+            
+            return fetch('/api/sync/expense', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(expense),
+            })
+            .then(response => {
+                if (response.ok) {
+                    console.log('Expense synced successfully, deleting from local DB');
+                    return deletePendingExpense(expense.id);
+                } else {
+                    // If the server returns an error (e.g., 400, 500), we don't delete the local copy
+                    console.error('Server returned an error, will retry later.');
+                    return Promise.reject('Server error');
+                }
+            })
+            .catch(err => {
+                // If there's a network error, we don't delete the local copy
+                console.error('Network error during sync, will retry later.', err);
+                return Promise.reject('Network error');
+            });
+        });
+        return Promise.all(syncPromises);
+    });
+}

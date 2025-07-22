@@ -60,4 +60,54 @@
         // ... your smart JS to show/hide inventory fields ...
     });
 </script>
+{{ super() }} {# This includes scripts from the parent template if any #}
+<script src="{{ url_for('static', filename='js/idb.js') }}"></script>
+<script>
+    const form = document.getElementById('expense-form');
+    const submitButton = form.querySelector('button[type="submit"]');
+
+    form.addEventListener('submit', (event) => {
+        // Prevent the default form submission
+        event.preventDefault();
+
+        // Check if the browser is offline
+        if (!navigator.onLine) {
+            console.log("Offline mode: saving expense locally.");
+            
+            // Get data from the form
+            const formData = new FormData(form);
+            const expenseData = {
+                date: formData.get('date'),
+                description: formData.get('description'),
+                amount: formData.get('amount'),
+                payment_account_id: formData.get('payment_account_id'),
+                expense_category_id: formData.get('expense_category_id')
+            };
+
+            // Save the data to our local IndexedDB
+            saveExpense(expenseData)
+                .then(() => {
+                    // Register a background sync task
+                    return navigator.serviceWorker.ready;
+                })
+                .then(registration => {
+                    return registration.sync.register('sync-new-expenses');
+                })
+                .then(() => {
+                    console.log("Sync task registered.");
+                    alert("You are offline. Expense has been saved locally and will be synced when you are back online.");
+                    // Redirect or clear the form
+                    window.location.href = "{{ url_for('dashboard') }}";
+                })
+                .catch(error => {
+                    console.error("Failed to save locally or register sync:", error);
+                    alert("Could not save expense locally. Please try again.");
+                });
+        } else {
+            // If online, submit the form as normal
+            console.log("Online mode: submitting form to server.");
+            form.submit();
+        }
+    });
+</script>
 {% endblock %}

@@ -10,7 +10,7 @@ from functools import wraps
 from flask import (Flask, render_template, request, redirect, url_for, flash,
                    session, g)
 from flask_bcrypt import Bcrypt
-# At the top of app.py
+
 
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, session, g
@@ -18,6 +18,7 @@ from flask_bcrypt import Bcrypt
 import sqlite3
 import os
 from datetime import date, timedelta, datetime # <-- ADD THIS LINE
+from flask import Flask, render_template, request, redirect, url_for, flash, g, jsonify
 
 # ==============================================================================
 # 1. FLASK APP INITIALIZATION & CONFIGURATION
@@ -2278,6 +2279,41 @@ def page_not_found(e):
     # Pass the user object to the 404 page so the navbar works
     user = g.user if hasattr(g, 'user') else None
     return render_template('404.html', user=user), 404
+@app.route('/api/sync/expense', methods=['POST'])
+@login_required 
+def sync_expense():
+    """API endpoint to receive offline expense data."""
+    data = request.get_json()
+    db = get_db()
 
+    try:
+        # Basic validation
+        if not all(k in data for k in ['date', 'description', 'amount', 'payment_account_id', 'expense_category_id']):
+            return jsonify({'status': 'error', 'message': 'Missing required data'}), 400
+
+        # Find the balancing account (Cash, Bank, etc.)
+        payment_account = db.execute("SELECT * FROM accounts WHERE id = ?", (data['payment_account_id'],)).fetchone()
+        if not payment_account:
+            return jsonify({'status': 'error', 'message': 'Payment account not found'}), 404
+
+        # Find the expense category account
+        expense_account = db.execute("SELECT * FROM accounts WHERE id = ?", (data['expense_category_id'],)).fetchone()
+        if not expense_account:
+            return jsonify({'status': 'error', 'message': 'Expense category not found'}), 404
+
+        # Create the journal entry: Debit Expense, Credit Asset (Cash/Bank)
+        db.execute("""
+            INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (data['date'], data['description'], expense_account['id'], payment_account['id'], float(data['amount']), g.user.id))
+
+        db.commit()
+        print(f"Successfully synced expense: {data['description']}")
+        return jsonify({'status': 'success', 'message': f"Synced expense: {data['description']}"}), 200
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error syncing expense: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
