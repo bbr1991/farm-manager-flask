@@ -1,14 +1,14 @@
 // Define a name for our cache
-const CACHE_NAME = 'farm-manager-cache-v4';
+const CACHE_NAME = 'farm-manager-cache-v5';
 
 // List all the files that make up the "app shell"
 // These are the files that will be saved so the app can load offline
 const URLS_TO_CACHE = [
-  '/', // The root of our site (the login page)
-  '/dashboard', // The main dashboard page
+  '/', 
+  '/dashboard', // Add this back in
   '/static/css/style.css',
   '/static/js/main.js',
-  '/static/js/dashboard.js',
+  '/static/js/idb.js',
   '/static/manifest.json',
   '/static/icon-192.png',
   '/static/icon-512.png'
@@ -45,24 +45,34 @@ self.addEventListener('activate', function(event) {
   );
 });
 
-// The 'fetch' event is fired every time the app makes a network request (e.g., for a page, a CSS file, an image).
-self.addEventListener('fetch', function(event) {
-  console.log('Service Worker: Fetching', event.request.url);
-  event.respondWith(
-    // We first check if the requested file is in our cache.
-    caches.match(event.request)
-      .then(function(response) {
-        // If it is in the cache, we return it immediately.
-        if (response) {
-          console.log('Service Worker: Found in cache', event.request.url);
-          return response;
-        }
-        // If it's not in the cache, we try to fetch it from the network.
-        console.log('Service Worker: Not in cache, fetching from network', event.request.url);
-        return fetch(event.request);
-      }
-    )
-  );
+// The 'fetch' event is fired every time the app makes a network request.
+self.addEventListener('fetch', (event) => {
+    // We only want to apply our offline strategy to page navigations (HTML pages)
+    if (event.request.mode === 'navigate') {
+        // STRATEGY: Network first, then cache
+        event.respondWith(
+            fetch(event.request).catch(() => {
+                // If the network fetch fails (i.e., we are offline),
+                // we open our cache and look for a fallback.
+                console.log('Fetch from network failed, trying to serve from cache...');
+                return caches.open(CACHE_NAME).then((cache) => {
+                    // We will try to serve the cached dashboard page as a fallback
+                    // If that's not available, we serve the main login page '/'
+                    return cache.match('/dashboard').then(response => {
+                       return response || cache.match('/');
+                    });
+                });
+            })
+        );
+    } else {
+        // STRATEGY: Cache first, then network (for CSS, JS, etc.)
+        // For all other requests (CSS, JS, images), we use the fast cache-first strategy.
+        event.respondWith(
+            caches.match(event.request).then((response) => {
+                return response || fetch(event.request);
+            })
+        );
+    }
 });
 // Listen for the 'sync' event
 self.addEventListener('sync', function(event) {
