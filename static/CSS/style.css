@@ -5,7 +5,7 @@
  */
 
 :root {
-    /* Color Palette - Easy to change! */
+    /* Color Palette */
     --primary-green: #27ae60;
     --dark-slate: #2c3e50;
     --medium-slate: #34495e;
@@ -14,12 +14,13 @@
     --text-muted-color: #95a5a6;
     --text-light: #ecf0f1;
     --white: #ffffff;
-    --shadow-color: rgba(0, 0, 0, 0.1);
+    --shadow-color: rgba(0, 0, 0, 0.08); /* Made shadow more subtle */
 }
 
 body {
     background-color: var(--light-grey);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow-x: hidden; /* Prevents horizontal scrollbars */
 }
 
 .wrapper {
@@ -62,7 +63,6 @@ body {
     margin-bottom: 0;
 }
 
-/* Sidebar Menu Headers (Replaces the old <p> tag) */
 #sidebar .sidebar-menu-header {
     padding: 10px 20px;
     font-size: 0.8rem;
@@ -73,6 +73,7 @@ body {
 
 #sidebar ul.components {
     padding: 20px 0;
+    border-bottom: 1px solid var(--medium-slate);
 }
 
 #sidebar ul li a {
@@ -103,7 +104,7 @@ body {
 
 #sidebar ul ul a {
     font-size: 0.9em !important;
-    padding-left: 45px !important; /* Increased indent */
+    padding-left: 45px !important;
     background: var(--medium-slate);
 }
 
@@ -114,90 +115,92 @@ body {
     padding: 15px 10px;
     background: var(--white);
     border: none;
-    border-radius: 8px; /* Softer radius */
+    border-radius: 8px;
     margin-bottom: 20px;
     box-shadow: 0 2px 5px var(--shadow-color);
 }
 
-/* Change sidebar toggle button color to match the theme */
-#sidebarCollapse.btn-info {
-    background-color: var(--medium-slate);
-    border: 1px solid var(--medium-slate);
-}
-#sidebarCollapse.btn-info:hover {
-    background-color: var(--dark-slate);
-    border: 1px solid var(--dark-slate);
+/* ======================================================
+ * General Card & Dashboard Styling
+ * ====================================================== */
+.card {
+    border-radius: 0.75rem; /* Softer corners for all cards */
+    border: 1px solid #e3e6f0;
+    box-shadow: 0 0.15rem 1.75rem 0 var(--shadow-color) !important;
 }
 
+.card-header {
+    background-color: #f8f9fc;
+    border-bottom: 1px solid #e3e6f0;
+    font-weight: 600;
+    color: var(--dark-slate); /* Using your theme color */
+}
+
+/* KPI Cards - This is the single, correct, merged version */
+.kpi-card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.kpi-card:hover {
+    transform: translateY(-5px); /* Add a subtle lift effect on hover */
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.12) !important;
+}
+
+.kpi-card .card-body {
+    padding: 1.5rem;
+}
+
+.kpi-label {
+    text-transform: uppercase;
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+.kpi-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--dark-slate);
+}
+
+.kpi-icon {
+    font-size: 3rem;
+    opacity: 0.2;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.kpi-card:hover .kpi-icon {
+    opacity: 0.4;
+}
+
+/* Color Variants for KPI Cards */
+.kpi-card-success { border-left: 5px solid var(--bs-success); }
+.kpi-card-primary { border-left: 5px solid var(--bs-primary); }
+.kpi-card-danger  { border-left: 5px solid var(--bs-danger); }
+
+/* Quick Actions List Styling */
+.list-group-item-action {
+    transition: background-color 0.2s ease-in-out;
+}
+.list-group-item-action i.bi-chevron-right {
+    transition: transform 0.2s ease-in-out;
+}
+.list-group-item-action:hover i.bi-chevron-right {
+    transform: translateX(5px);
+}
 
 /* ======================================================
  * Media Queries
  * ====================================================== */
-/* Mobile View */
 @media (max-width: 768px) {
-    #sidebar {
-        margin-left: -250px;
-    }
-    #sidebar.active {
-        margin-left: 0;
-    }
+    #sidebar { margin-left: -250px; }
+    #sidebar.active { margin-left: 0; }
 }
 
-/* Print View */
 @media print {
-    .no-print {
-        display: none !important;
-    }
-    body,
-    #content {
-        background-color: var(--white);
-    }
-    .card,
-    .top-navbar {
-        border: none !important;
-        box-shadow: none !important;
-    }
-    .wrapper,
-    #content {
-        display: block;
-        padding: 0;
-    }
-}
-/*
- * ======================================================
- * Dashboard-Specific Styles
- * ======================================================
- */
-
-/* KPI Cards */
-.kpi-card {
-    border-left: 0.25rem solid;
-}
-.kpi-card--primary { border-left-color: var(--dark-slate); }
-.kpi-card--success { border-left-color: var(--primary-green); }
-.kpi-card--danger  { border-left-color: #e74a3b; } /* Keeping a distinct danger color */
-
-.kpi-card .text-xs { 
-    font-size: .9rem; 
-}
-.kpi-card .text-gray-300 { 
-    color: #e0e0e0 !important; /* A light grey for icons */
-}
-
-/* Card Header Styling */
-.card-header {
-    background-color: #f8f9fc; /* A very light grey */
-    border-bottom: 1px solid #e3e6f0;
-}
-.card-header .font-weight-bold {
-    color: var(--dark-slate);
-}
-
-/* Quick Actions List */
-.list-group-item-action i {
-    color: var(--medium-slate);
-    transition: color 0.2s;
-}
-.list-group-item-action:hover i {
-    color: var(--primary-green);
+    .no-print { display: none !important; }
+    body, #content { background-color: var(--white); padding: 0; }
+    .card, .top-navbar { border: none !important; box-shadow: none !important; }
+    .wrapper { display: block; }
 }
