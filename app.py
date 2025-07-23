@@ -23,7 +23,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, g, 
 # ==============================================================================
 # 1. FLASK APP INITIALIZATION & CONFIGURATION
 # ==============================================================================
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = 'a_very_good_and_long_production_secret_key_!@#$%'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 bcrypt = Bcrypt(app)
