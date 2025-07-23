@@ -28,10 +28,6 @@ app.config['SECRET_KEY'] = 'a_very_good_and_long_production_secret_key_!@#$%'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 bcrypt = Bcrypt(app)
 DATABASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'farm_data.db')
-@app.route('/test_pwa')
-def test_pwa():
-    """A minimal page to test PWA registration."""
-    return render_template('test_pwa.html')
 # ==============================================================================
 # 2. DATABASE CONNECTION HANDLING
 # ==============================================================================
@@ -46,6 +42,13 @@ def close_db(exception):
     db = g.pop('db', None)
     if db is not None:
         db.close()
+from flask import send_from_directory
+import os
+
+@app.route('/sw.js')
+def serve_sw():
+    # This sends the sw.js file from your project's root directory
+    return send_from_directory(os.path.join(app.root_path, ''), 'sw.js')
 # ==============================================================================
 # 3. USER MODEL
 # ==============================================================================
