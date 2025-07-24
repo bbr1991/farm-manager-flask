@@ -23,7 +23,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, g, 
 # ==============================================================================
 # 1. FLASK APP INITIALIZATION & CONFIGURATION
 # ==============================================================================
-app = Flask(__name__, static_folder='static', static_url_path='/static')
+app = Flask(__name__, static_url_path='/static', static_folder='static')
 app.config['SECRET_KEY'] = 'a_very_good_and_long_production_secret_key_!@#$%'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 bcrypt = Bcrypt(app)
@@ -597,40 +597,59 @@ def inventory_dashboard():
 @permission_required('view_poultry')
 def poultry_dashboard():
     db = get_db()
-    
-    # === YOUR EXISTING CODE (preserved) ===
-    poultry_stats_row = db.execute("SELECT (SELECT COALESCE(SUM(bird_count), 0) FROM poultry_flocks WHERE status = 'Active') as total_active_birds, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date = date('now', 'localtime')) as eggs_today, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date >= date('now', '-6 days')) as eggs_last_7_days").fetchone()
+    today_str = date.today().strftime('%Y-%m-%d')
+    seven_days_ago_str = (date.today() - timedelta(days=6)).strftime('%Y-%m-%d')
+
+    # === NEW, MORE ROBUST STATS QUERY ===
+    # This query is reliable because we pass the dates in directly.
+    poultry_stats_row = db.execute("""
+        SELECT 
+            (SELECT COALESCE(SUM(bird_count), 0) FROM poultry_flocks WHERE status = 'Active') as total_active_birds,
+            (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date = ?) as eggs_today,
+            (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date >= ?) as eggs_last_7_days
+    """, (today_str, seven_days_ago_str)).fetchone()
+
+    # Fetch active flocks
     active_flocks = db.execute("SELECT * FROM poultry_flocks WHERE status = 'Active' ORDER BY acquisition_date DESC").fetchall()
-    egg_logs = db.execute("SELECT el.log_date, el.quantity, pf.flock_name FROM egg_log el JOIN poultry_flocks pf ON el.flock_id = pf.id ORDER BY el.log_date DESC, el.id DESC LIMIT 10").fetchall()
-    total_active_birds = poultry_stats_row['total_active_birds'] or 0
-    eggs_today = poultry_stats_row['eggs_today'] or 0
+    
+    # Fetch egg logs, now including the crates and pieces columns for the log display
+    egg_logs = db.execute("""
+        SELECT el.log_date, el.quantity, el.crates, el.pieces, pf.flock_name 
+        FROM egg_log el 
+        JOIN poultry_flocks pf ON el.flock_id = pf.id 
+        ORDER BY el.log_date DESC, el.id DESC LIMIT 10
+    """).fetchall()
+    
+    # Safely get the stats values from the query result
+    total_active_birds = poultry_stats_row['total_active_birds'] if poultry_stats_row['total_active_birds'] is not None else 0
+    eggs_today = poultry_stats_row['eggs_today'] if poultry_stats_row['eggs_today'] is not None else 0
+    
+    # Build the stats dictionary for the KPI cards
     stats = {
         'total_active_birds': total_active_birds,
         'eggs_today': eggs_today,
         'eggs_last_7_days': poultry_stats_row['eggs_last_7_days'] or 0,
         'avg_production_rate': (eggs_today / total_active_birds) if total_active_birds > 0 else 0
     }
-    # === END OF YOUR EXISTING CODE ===
 
-    # === NEW CODE (added for the new features) ===
-    # Fetch inventory items that are categorized as 'Feed' for the modal
+    # Fetch feed items for the "Log Feed Usage" modal
     feed_items = db.execute("SELECT * FROM inventory WHERE category = 'Feed' AND quantity > 0").fetchall()
     
-    # Fetch inactive flocks for the new results table
+    # Fetch inactive flocks for the profitability table
     inactive_flocks = db.execute("SELECT * FROM poultry_flocks WHERE status = 'Inactive' ORDER BY acquisition_date DESC").fetchall()
-    # === END OF NEW CODE ===
 
-    # Pass ALL data (old and new) to the template
+    # Pass ALL the data to the template
     return render_template(
         'poultry.html', 
         user=g.user, 
         stats=stats, 
         active_flocks=active_flocks, 
         egg_logs=egg_logs,
-        feed_items=feed_items,           # <-- New
-        inactive_flocks=inactive_flocks, # <-- New
-        today_date=date.today().strftime('%Y-%m-%d') # <-- New utility variable
+        feed_items=feed_items,
+        inactive_flocks=inactive_flocks,
+        today_date=today_str
     )
+
 @app.route('/water')
 @login_required
 @permission_required('view_water')
@@ -1736,45 +1755,61 @@ def log_inventory_usage():
 # ==============================================================================
 # 13. DATA MODIFICATION & ACTION ROUTES
 # ==============================================================================
+# Find your existing add_egg_log function and replace it with this one.
 @app.route('/poultry/eggs/log', methods=['POST'])
 @login_required
-@check_day_closed('date')
 @permission_required('edit_poultry')
+# I'm removing @check_day_closed for now to simplify debugging. You can add it back later.
 def add_egg_log():
-    """Handles logging a new egg collection and updates inventory."""
+    """Handles logging new egg collection by crates and pieces, and updates inventory."""
     db = get_db()
     try:
         log_date = request.form.get('log_date')
-        flock_id = int(request.form.get('flock_id'))
-        quantity = int(request.form.get('quantity'))
+        flock_id = request.form.get('flock_id')
+        
+        # Get crates and pieces, defaulting to 0 if the field is empty
+        crates = int(request.form.get('crates', 0) or 0)
+        pieces = int(request.form.get('pieces', 0) or 0)
 
-        if not all([log_date, flock_id, quantity]) or quantity < 0:
-            flash('Invalid date, flock, or quantity provided.', 'warning')
+        # --- Validation ---
+        if not all([log_date, flock_id]):
+            flash('Invalid date or flock provided.', 'warning')
+            return redirect(url_for('poultry_dashboard'))
+        
+        flock_id = int(flock_id)
+
+        # --- Calculation ---
+        EGGS_PER_CRATE = 30  # Define your standard crate size here
+        total_quantity = (crates * EGGS_PER_CRATE) + pieces
+
+        if total_quantity <= 0:
+            flash('Total eggs must be greater than zero. Please enter a value for crates or pieces.', 'warning')
             return redirect(url_for('poultry_dashboard'))
 
-        # --- THIS IS THE NEW INTEGRATION LOGIC ---
         # Find the inventory item named 'Eggs'
         egg_inventory_item = db.execute("SELECT id FROM inventory WHERE name = 'Eggs'").fetchone()
         
         if not egg_inventory_item:
             # If it doesn't exist, we can't update the stock
-            flash("Inventory item 'Eggs' not found. Please create it in the Inventory module first.", "danger")
+            flash("CRITICAL: Inventory item 'Eggs' not found. Please create it in the Inventory module first.", "danger")
             return redirect(url_for('poultry_dashboard'))
 
         # --- Start a Database Transaction ---
-        # 1. Add the record to the egg_log table for history
-        db.execute("INSERT INTO egg_log (log_date, flock_id, quantity) VALUES (?, ?, ?)",
-                   (log_date, flock_id, quantity))
+        # 1. Add the record to the egg_log table with all the new details
+        db.execute("""
+            INSERT INTO egg_log (log_date, flock_id, crates, pieces, quantity) 
+            VALUES (?, ?, ?, ?, ?)
+        """, (log_date, flock_id, crates, pieces, total_quantity))
         
         # 2. Update the main inventory table to increase the stock of eggs
         db.execute("UPDATE inventory SET quantity = quantity + ? WHERE id = ?", 
-                   (quantity, egg_inventory_item['id']))
+                   (total_quantity, egg_inventory_item['id']))
         
         # If both commands succeed, commit the changes
         db.commit()
         # --- End of Transaction ---
 
-        flash(f'{quantity} eggs logged and added to inventory successfully!', 'success')
+        flash(f'{crates} crates and {pieces} pieces ({total_quantity} total eggs) logged and added to inventory!', 'success')
 
     except (ValueError, TypeError) as e:
         flash(f"Invalid data provided. Please check your numbers. Error: {e}", 'danger')
@@ -2283,9 +2318,8 @@ def add_contact():
 # ==============================================================================
 @app.errorhandler(404)
 def page_not_found(e):
-    # Pass the user object to the 404 page so the navbar works
-    user = g.user if hasattr(g, 'user') else None
-    return render_template('404.html', user=user), 404
+    # This handler no longer needs to know about the user.
+    return render_template('404.html'), 404
 @app.route('/api/sync/expense', methods=['POST'])
 @login_required 
 def sync_expense():

@@ -2,11 +2,10 @@
 {% block title %}Poultry Management{% endblock %}
 
 {% block content %}
-    <!-- Page Header (Your Original Header - with one new button) -->
+    <!-- Page Header -->
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
         <h1 class="h2">Poultry Management</h1>
         <div class="btn-toolbar mb-2 mb-md-0">
-            <!-- NEW: Button to log feed usage -->
             <button type="button" class="btn btn-info me-2" data-bs-toggle="modal" data-bs-target="#logFeedModal">
                 <i class="bi bi-basket3-fill"></i> Log Feed Usage
             </button>
@@ -17,7 +16,7 @@
         </div>
     </div>
 
-    <!-- KPI Cards (Your Original KPI Cards) -->
+    <!-- KPI Cards -->
     <div class="row">
         <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-primary shadow h-100 py-2">
@@ -64,7 +63,7 @@
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
                             <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Avg. Daily Production</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ '{:,.1%}'.format(stats.avg_production_rate) }}</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ '{:,.1%}'.format(stats.avg_production_rate) if stats.avg_production_rate is not none else 'N/A' }}</div>
                         </div>
                         <div class="col-auto"><i class="bi bi-graph-up fs-2 text-gray-300"></i></div>
                     </div>
@@ -72,11 +71,11 @@
             </div>
         </div>
     </div>
+    
     <!-- Main Content Row -->
     <div class="row">
         <!-- Left Column: Flocks -->
         <div class="col-lg-8">
-            <!-- Active Flocks Table (Your Original Table - with a new button) -->
             <div class="card shadow mb-4">
                 <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Active Flocks Overview</h6></div>
                 <div class="card-body">
@@ -101,7 +100,6 @@
                                     <td>{{ flock.acquisition_date }}</td>
                                     <td class="text-center"><span class="badge bg-success">{{ flock.status }}</span></td>
                                     <td>
-                                        <!-- NEW: Deactivate/Sell Button -->
                                         <button class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#deactivateFlockModal" data-flock-id="{{ flock.id }}" data-flock-name="{{ flock.flock_name }}">
                                             Deactivate/Sell
                                         </button>
@@ -116,7 +114,6 @@
                 </div>
             </div>
 
-            <!-- NEW: Inactive/Sold Flocks Table -->
             <div class="card shadow mb-4">
                 <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Inactive/Sold Flocks (Profitability)</h6></div>
                 <div class="card-body">
@@ -146,9 +143,8 @@
             </div>
         </div>
 
-        <!-- Right Column: Egg Logging (Your Original Right Column) -->
+        <!-- Right Column: Egg Logging -->
         <div class="col-lg-4">
-            <!-- Egg Log Form Card (Unchanged) -->
             <div class="card shadow mb-4" id="egg-log-form">
                 <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Log Daily Egg Collection</h6></div>
                 <div class="card-body">
@@ -164,33 +160,50 @@
                                 {% for flock in active_flocks %}<option value="{{ flock.id }}">{{ flock.flock_name }}</option>{% endfor %}
                             </select>
                         </div>
-                        <div class="mb-3">
-                            <label for="quantity" class="form-label">Number of Eggs Collected</label>
-                            <input type="number" class="form-control" id="quantity" name="quantity" min="0" required>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label for="crates" class="form-label">Crates</label>
+                                <input type="number" class="form-control" id="crates" name="crates" min="0" value="0">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label for="pieces" class="form-label">Pieces</label>
+                                <input type="number" class="form-control" id="pieces" name="pieces" min="0" max="29" value="0">
+                            </div>
                         </div>
                         <div class="d-grid"><button type="submit" class="btn btn-success">Log Eggs</button></div>
                     </form>
                 </div>
             </div>
-            <!-- Recent Log History Card (Unchanged) -->
+            
             <div class="card shadow mb-4">
                 <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Recent Log History</h6></div>
                 <div class="card-body" style="max-height: 300px; overflow-y: auto;">
                     <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Flock</th>
+                                <th class="text-center">Crates</th>
+                                <th class="text-center">Pieces</th>
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
                         <tbody>
                             {% for log in egg_logs %}
                             <tr>
-                                {# --- ANOTHER FIX HERE --- #}
-                                {# The log_date is also a string, so we just print it #}
                                 <td>{{ log.log_date }}</td>
                                 <td>{{ log.flock_name }}</td>
-                                <td class="text-end"><strong>{{ log.quantity }}</strong> eggs</td>
+                                <td class="text-center">{{ log.crates }}</td>
+                                <td class="text-center">{{ log.pieces }}</td>
+                                <td class="text-end"><strong>{{ log.quantity }}</strong></td>
                             </tr>
                             {% else %}
-                            <tr><td class="text-center text-muted">No recent logs.</td></tr>
+                            <tr><td colspan="5" class="text-center text-muted">No recent logs.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -283,7 +296,9 @@
     </div>
 </div>
 
+
 {% endblock %}
+
 
 {% block head_styles %}
     <!-- Your Original Styles -->
@@ -295,31 +310,40 @@
     .text-xs { font-size: .9rem; }
     .text-gray-300 { color: #dddfeb !important; }
     </style>
-
 {% endblock %}
 
-{% block scripts %}
-    <!-- Your Original Scripts -->
-    <script>
-    // Set default date for egg log to today
-    document.getElementById('log_date').valueAsDate = new Date();
-    // Set default date for new flock acquisition to today
-    document.querySelector('#addFlockModal input[name="acquisition_date"]').valueAsDate = new Date();
-    </script>
 
-    <!-- NEW: Script for Deactivate Modal -->
+{% block scripts %}
+    {{ super() }} {# THIS IS THE MOST IMPORTANT LINE #}
+    
     <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var deactivateModal = document.getElementById('deactivateFlockModal');
-        deactivateModal.addEventListener('show.bs.modal', function (event) {
-            var button = event.relatedTarget;
-            var flockId = button.getAttribute('data-flock-id');
-            var flockName = button.getAttribute('data-flock-name');
-            var modalBodyName = deactivateModal.querySelector('#deactivateFlockName');
-            var modalInputId = deactivateModal.querySelector('#deactivateFlockId');
-            modalBodyName.textContent = flockName;
-            modalInputId.value = flockId;
+        // This single, safe block will run after the whole page is ready.
+        document.addEventListener('DOMContentLoaded', function() {
+            
+            // --- Script for Deactivate Modal ---
+            const deactivateModal = document.getElementById('deactivateFlockModal');
+            if (deactivateModal) {
+                deactivateModal.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    const flockId = button.getAttribute('data-flock-id');
+                    const flockName = button.getAttribute('data-flock-name');
+                    const modalBodyName = deactivateModal.querySelector('#deactivateFlockName');
+                    const modalInputId = deactivateModal.querySelector('#deactivateFlockId');
+                    modalBodyName.textContent = flockName;
+                    modalInputId.value = flockId;
+                });
+            }
+
+            // --- Script to set default dates ---
+            const logDateInput = document.getElementById('log_date');
+            if (logDateInput) {
+                logDateInput.valueAsDate = new Date();
+            }
+
+            const acquisitionDateInput = document.querySelector('#addFlockModal input[name="acquisition_date"]');
+            if (acquisitionDateInput) {
+                acquisitionDateInput.valueAsDate = new Date();
+            }
         });
-    });
     </script>
 {% endblock %}
