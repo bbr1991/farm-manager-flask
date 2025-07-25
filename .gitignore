@@ -14,3 +14,5 @@ __pycache__/
 # You might want to track this in the beginning, but it's good practice to ignore
 # instance/
 # *.sqlite3
+farm_data.db
+```4.  Save and close the `.gitignore` file.
