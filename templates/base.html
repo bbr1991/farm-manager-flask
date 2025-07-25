@@ -43,10 +43,11 @@
                 <li>
                     <a href="#bookkeepingSubmenu" data-bs-toggle="collapse" aria-expanded="false" class="dropdown-toggle {% if 'bookkeeping' in request.endpoint or 'financials' in request.endpoint %}active{% endif %}"><i class="bi bi-book-half"></i>Bookkeeping</a>
                     <ul class="collapse list-unstyled" id="bookkeepingSubmenu">
-                        <li><a href="{{ url_for('financial_center') }}">Financial Center</a></li>
-                        <li><a href="{{ url_for('chart_of_accounts') }}">Chart of Accounts</a></li>
-                        <li><a href="{{ url_for('general_journal') }}">General Journal</a></li>
-                    </ul>
+                <li><a href="{{ url_for('financial_center') }}">Financial Center</a></li>
+                <li><a href="{{ url_for('chart_of_accounts') }}">Chart of Accounts</a></li>
+                <li><a href="{{ url_for('general_journal') }}">General Journal</a></li>
+    <!-- The broken link has been removed from here -->
+                </ul>   
                 </li>
                 {% endif %}
                 
@@ -76,6 +77,7 @@
                                     <li><a class="dropdown-item" href="{{ url_for('change_password') }}">Change Password</a></li>
                                     <li><hr class="dropdown-divider"></li>
                                     <li><a class="dropdown-item" href="{{ url_for('logout') }}">Logout</a></li>
+                                
                                 </ul>
                             </li>
                         </ul>

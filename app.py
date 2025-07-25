@@ -1415,50 +1415,87 @@ def report_water():
         end_date=end_date,
         now=datetime.utcnow()
     )
-# Add this route to app.py, in Section 10
-
-@app.route('/report/inventory')
+@app.route('/reports/inventory')
 @login_required
-@permission_required('view_reports')
-def report_inventory():
-    """Calculates and displays the Inventory Usage report."""
-    start_date, end_date = _get_report_dates(request.args)
-    # Get the optional category filter
-    selected_category = request.args.get('category', '')
-    
+@permission_required('view_reports') # Make sure you have a 'view_reports' permission
+def inventory_report():
+    """Generates a detailed report of current inventory status and valuation."""
     db = get_db()
     
-    # Base SQL query
-    sql = """
-        SELECT i.name, i.category, i.unit, SUM(il.quantity_used) as total_used
-        FROM inventory_log il
-        JOIN inventory i ON il.inventory_item_id = i.id
-        WHERE il.log_date BETWEEN ? AND ?
-    """
-    params = [start_date, end_date]
+    # This query calculates the value per item and gets all necessary details
+    inventory_items = db.execute("""
+        SELECT 
+            name, 
+            category, 
+            quantity, 
+            unit, 
+            unit_cost,
+            sale_price,
+            low_stock_threshold,
+            expiry_date,
+            (quantity * unit_cost) AS total_cost_value,
+            (quantity * sale_price) AS total_sale_value
+        FROM inventory 
+        ORDER BY category, name
+    """).fetchall()
 
-    # If a category is selected, add it to the query
-    if selected_category:
-        sql += " AND i.category = ?"
-        params.append(selected_category)
+    # Calculate overall summary statistics
+    total_inventory_cost = sum(item['total_cost_value'] for item in inventory_items)
+    total_inventory_sale_value = sum(item['total_sale_value'] for item in inventory_items)
     
-    # Add the final grouping and ordering
-    sql += " GROUP BY i.id, i.name, i.category, i.unit ORDER BY i.name"
-    
-    usage_summary = db.execute(sql, params).fetchall()
+    # Pass today's date for the report header
+    report_date = date.today().strftime('%B %d, %Y')
 
-    data = {
-        "usage_summary": usage_summary
-    }
-    
     return render_template(
-        'report_inventory.html', 
+        'inventory_report.html',
         user=g.user,
-        data=data,
-        start_date=start_date,
-        end_date=end_date,
-        selected_category=selected_category, # Pass this back to the template
-        now=datetime.utcnow()
+        inventory_items=inventory_items,
+        total_inventory_cost=total_inventory_cost,
+        total_inventory_sale_value=total_inventory_sale_value,
+        report_date=report_date
+    )
+@app.route('/reports/inventory') # A better URL for your reporting section
+@login_required
+@permission_required('view_reports') # Make sure users have this permission
+def report_inventory():
+    """
+    Generates a detailed report of CURRENT inventory status and valuation.
+    This is a snapshot, not a historical report.
+    """
+    db = get_db()
+    
+    # This query calculates the value per item and gets all necessary details
+    inventory_items = db.execute("""
+        SELECT 
+            name, 
+            category, 
+            quantity, 
+            unit, 
+            unit_cost,
+            sale_price,
+            low_stock_threshold,
+            expiry_date,
+            (quantity * unit_cost) AS total_cost_value,
+            (quantity * sale_price) AS total_sale_value
+        FROM inventory 
+        ORDER BY category, name
+    """).fetchall()
+
+    # Calculate overall summary statistics for the KPI cards
+    total_inventory_cost = sum(item['total_cost_value'] for item in inventory_items)
+    total_inventory_sale_value = sum(item['total_sale_value'] for item in inventory_items)
+    
+    # Get today's date for the report header
+    report_date = date.today().strftime('%B %d, %Y')
+
+    # Pass the data to the template using the variable names it expects
+    return render_template(
+        'report_inventory.html', # This is the correct template file
+        user=g.user,
+        inventory_items=inventory_items,
+        total_inventory_cost=total_inventory_cost,
+        total_inventory_sale_value=total_inventory_sale_value,
+        report_date=report_date
     )
 @app.route('/report/daily-sales')
 @login_required
@@ -1755,11 +1792,9 @@ def log_inventory_usage():
 # ==============================================================================
 # 13. DATA MODIFICATION & ACTION ROUTES
 # ==============================================================================
-# Find your existing add_egg_log function and replace it with this one.
 @app.route('/poultry/eggs/log', methods=['POST'])
 @login_required
 @permission_required('edit_poultry')
-# I'm removing @check_day_closed for now to simplify debugging. You can add it back later.
 def add_egg_log():
     """Handles logging new egg collection by crates and pieces, and updates inventory."""
     db = get_db()
@@ -1893,6 +1928,72 @@ def deactivate_flock():
         flash(f"An error occurred: {e}", "danger")
         
     return redirect(url_for('poultry_dashboard'))
+@app.route('/inventory/update', methods=['POST'])
+@login_required
+@permission_required('edit_inventory') # Assumes you have this permission
+def update_inventory_item():
+    """Handles updating an existing inventory item's details."""
+    db = get_db()
+    try:
+        # Get all the data from the edit form
+        item_id = request.form.get('item_id')
+        name = request.form.get('name')
+        category = request.form.get('category')
+        quantity = float(request.form.get('quantity'))
+        unit = request.form.get('unit')
+        low_stock_threshold = float(request.form.get('low_stock_threshold'))
+        unit_cost = float(request.form.get('unit_cost'))
+        sale_price = float(request.form.get('sale_price'))
+        expiry_date = request.form.get('expiry_date') or None # Handle empty date
+
+        if not all([item_id, name, category, unit]):
+             flash('Missing required fields for update.', 'danger')
+             return redirect(url_for('inventory_dashboard'))
+
+        # Execute the SQL UPDATE command
+        db.execute("""
+            UPDATE inventory SET
+                name = ?, category = ?, quantity = ?, unit = ?, 
+                low_stock_threshold = ?, unit_cost = ?, sale_price = ?, expiry_date = ?
+            WHERE id = ?
+        """, (name, category, quantity, unit, low_stock_threshold, unit_cost, sale_price, expiry_date, item_id))
+        
+        db.commit()
+        flash(f"'{name}' was updated successfully!", 'success')
+
+    except (ValueError, TypeError) as e:
+        db.rollback()
+        flash(f"Invalid data submitted for update. Please check numbers. Error: {e}", 'danger')
+    except Exception as e:
+        db.rollback()
+        flash(f"An unexpected error occurred during update: {e}", 'danger')
+
+    return redirect(url_for('inventory_dashboard'))
+
+
+@app.route('/inventory/delete/<int:item_id>', methods=['POST'])
+@login_required
+@permission_required('delete_inventory') # Assumes you have this permission
+def delete_inventory_item(item_id):
+    """Handles deleting an inventory item. DANGEROUS action."""
+    db = get_db()
+    try:
+        # IMPORTANT: In a real-world app, you might check if this item is
+        # linked to past sales records before deleting. For now, we will proceed.
+        item = db.execute("SELECT name FROM inventory WHERE id = ?", (item_id,)).fetchone()
+        if item:
+            db.execute("DELETE FROM inventory WHERE id = ?", (item_id,))
+            db.commit()
+            flash(f"Inventory item '{item['name']}' has been permanently deleted.", 'success')
+        else:
+            flash("Item not found.", 'warning')
+            
+    except Exception as e:
+        db.rollback()
+        # This can happen if the item is part of a transaction with foreign key constraints
+        flash(f"Could not delete item. It may be linked to other records (like sales or feed logs). Error: {e}", 'danger')
+
+    return redirect(url_for('inventory_dashboard'))
 # ==============================================================================
 # 13B. BROODING MANAGEMENT ROUTES (NEW SECTION)
 # ==============================================================================

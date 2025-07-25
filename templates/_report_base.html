@@ -17,8 +17,7 @@
         <div class="card-body">
             {# The form action cleverly points to the current page's URL #}
             <form method="GET" action="{{ request.path }}">
-                <div class="row g-3 align-items-end">
-                    
+                <div class="row g-3 align-items-end">  
                     {# This block allows specific reports to add extra filters #}
                     {% block extra_filters %}{% endblock %}
                     
