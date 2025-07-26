@@ -1,38 +1,57 @@
 {% extends "base.html" %}
-{% block title %}{% if g.user %}{{ g.user.farm_name }}{% endif %} - Contact Management{% endblock %}
+{% block title %}Contact Management{% endblock %}
+
+{% block head_styles %}
+    <style>
+        .kpi-label { font-size: 0.8rem; text-transform: uppercase; font-weight: bold; }
+        .kpi-value { font-size: 1.75rem; font-weight: bold; }
+        .kpi-icon { font-size: 2.5rem; opacity: 0.3; }
+    </style>
+{% endblock %}
 
 {% block content %}
     <!-- Page Header -->
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">Contact Management</h1>
+        <h1 class="h2"><i class="bi bi-people-fill me-2"></i>Contacts</h1>
         <div class="btn-toolbar mb-2 mb-md-0">
+            <a href="{{ url_for('customer_transaction') }}" class="btn btn-success me-2">
+                <i class="bi bi-plus-circle-fill"></i> New Customer Transaction
+            </a>
             <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addContactModal">
                 <i class="bi bi-person-plus-fill"></i> Add New Contact
             </button>
         </div>
     </div>
 
-    <!-- KPI Stats Cards (This section is perfect) -->
+    <!-- KPI Stats Cards -->
     <div class="row">
-        <!-- ... (your three stats cards are perfect, no changes needed) ... -->
+        <div class="col-lg-4 col-md-6 mb-4">
+            <div class="card shadow-sm h-100"><div class="card-body"><div class="row align-items-center"><div class="col"><div class="kpi-label text-info">Total Contacts</div><div class="kpi-value">{{ stats.total_contacts }}</div></div><div class="col-auto kpi-icon"><i class="bi bi-people-fill"></i></div></div></div></div>
+        </div>
+        <div class="col-lg-4 col-md-6 mb-4">
+            <div class="card shadow-sm h-100"><div class="card-body"><div class="row align-items-center"><div class="col"><div class="kpi-label text-danger">Debtors (Owed to Us)</div><div class="kpi-value">₦{{ '{:,.2f}'.format(stats.accounts_receivable) }}</div></div><div class="col-auto kpi-icon"><i class="bi bi-arrow-up-right-circle"></i></div></div></div></div>
+        </div>
+        <div class="col-lg-4 col-md-6 mb-4">
+            <div class="card shadow-sm h-100"><div class="card-body"><div class="row align-items-center"><div class="col"><div class="kpi-label text-success">Creditors (Owed by Us)</div><div class="kpi-value">₦{{ '{:,.2f}'.format(stats.accounts_payable) }}</div></div><div class="col-auto kpi-icon"><i class="bi bi-arrow-down-left-circle"></i></div></div></div></div>
+        </div>
     </div>
 
     <!-- Contacts Table -->
-    <div class="card shadow">
-        <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
-            <h6 class="m-0 font-weight-bold text-primary">Contacts List</h6>
+    <div class="card shadow-sm">
+        <div class="card-header bg-light py-3 d-flex flex-row align-items-center justify-content-between">
+            <h5 class="m-0 font-weight-bold">Contacts List</h5>
             <form method="GET" action="{{ url_for('contacts_dashboard') }}" class="d-flex">
-                <input type="text" class="form-control form-control-sm" placeholder="Search contacts..." name="q" value="{{ request.args.get('q', '') }}">
-                <button class="btn btn-sm btn-primary ms-2" type="submit"><i class="bi bi-search"></i></button>
+                <input type="text" class="form-control form-control-sm" placeholder="Search by name..." name="q" value="{{ request.args.get('q', '') }}">
+                <button class="btn btn-sm btn-outline-primary ms-2" type="submit"><i class="bi bi-search"></i></button>
             </form>
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
                         <tr>
                             <th>Name</th><th>Type</th><th>Contact Info</th>
-                            <th class="text-end">Current Balance</th><th>Actions</th>
+                            <th class="text-end">Current Balance</th><th class="text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -41,25 +60,16 @@
                             <td><strong>{{ contact.name }}</strong></td>
                             <td>{{ contact.type }}</td>
                             <td>
-                                {% if contact.phone %}<i class="bi bi-telephone-fill text-muted"></i> {{ contact.phone }}<br>{% endif %}
-                                {% if contact.email %}<i class="bi bi-envelope-fill text-muted"></i> {{ contact.email }}{% endif %}
+                                {% if contact.phone %}<i class="bi bi-telephone-fill text-muted me-2"></i>{{ contact.phone }}<br>{% endif %}
+                                {% if contact.email %}<i class="bi bi-envelope-fill text-muted me-2"></i>{{ contact.email }}{% endif %}
                             </td>
-                            <td class="text-end">
-                                <!-- ... (your balance display logic is perfect) ... -->
+                            <td class="text-end font-weight-bold {% if contact.balance > 0 %}text-danger{% elif contact.balance < 0 %}text-success{% endif %}">
+                                ₦{{ '{:,.2f}'.format(contact.balance) }}
                             </td>
-                            <td>
-                                <div class="btn-group">
-                                    <a href="{{ url_for('contact_ledger', contact_id=contact.id) }}" class="btn btn-sm btn-outline-primary" title="View Ledger"><i class="bi bi-journal-text"></i> Ledger</a>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false"><span class="visually-hidden">Toggle Dropdown</span></button>
-                                    <ul class="dropdown-menu">
-                                        <li><a class="dropdown-item" href="{{ url_for('edit_contact', contact_id=contact.id) }}"><i class="bi bi-pencil-fill me-2"></i>Edit Contact</a></li>
-                                        <li><hr class="dropdown-divider"></li>
-                                        <li>
-                                            <form action="{{ url_for('delete_contact', contact_id=contact.id) }}" method="POST" onsubmit="return confirm('Are you sure?');" class="d-inline">
-                                                <button type="submit" class="dropdown-item text-danger"><i class="bi bi-trash-fill me-2"></i>Delete Contact</button>
-                                            </form>
-                                        </li>
-                                    </ul>
+                            <td class="text-center">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{{ url_for('contact_ledger', contact_id=contact.id) }}" class="btn btn-outline-primary" title="View Ledger">Ledger</a>
+                                    <a href="{{ url_for('edit_contact', contact_id=contact.id) }}" class="btn btn-outline-secondary" title="Edit Contact"><i class="bi bi-pencil-fill"></i></a>
                                 </div>
                             </td>
                         </tr>
@@ -72,41 +82,48 @@
         </div>
     </div>
 
-    {# --- THIS IS THE CORRECT PLACEMENT FOR THE MODAL --- #}
-    {# It is INSIDE the content block, but after the main table #}
-    <div class="modal fade" id="addContactModal" tabindex="-1" aria-labelledby="addContactModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="addContactModalLabel">Add New Contact</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form action="{{ url_for('add_contact') }}" method="POST">
-                        <div class="mb-3"><label class="form-label">Name</label><input type="text" class="form-control" name="name" required></div>
-                        <div class="mb-3">
-                            <label class="form-label">Contact Type</label>
-                            <select class="form-select" name="type" required>
-                                <option selected disabled value="">Choose...</option><option value="Customer">Customer</option><option value="Supplier">Supplier</option><option value="Other">Other</option>
-                            </select>
+    <!-- Add New Contact Modal -->
+     <div class="modal fade" id="addContactModal" tabindex="-1" aria-labelledby="addContactModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addContactModalLabel">Add New Contact</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('add_contact') }}" method="POST">
+                    <div class="mb-3">
+                        <label for="contact-name" class="form-label">Contact Name</label>
+                        <input type="text" class="form-control" name="name" id="contact-name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="contact-type" class="form-label">Contact Type</label>
+                        <select class="form-select" name="type" id="contact-type" required>
+                            <option selected disabled value="">-- Choose a type --</option>
+                            <option value="Customer">Customer</option>
+                            <option value="Supplier">Supplier</option>
+                            <option value="Other">Other</option>
+                        </select>
+                        <div class="form-text">
+                            Selecting 'Customer' will automatically create a receivable ledger account for them.
                         </div>
-                        <div class="mb-3"><label class="form-label">Phone</label><input type="tel" class="form-control" name="phone"></div>
-                        <div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" name="email"></div>
-                        <hr>
-                        <div class="text-end">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                            <button type="submit" class="btn btn-primary">Save Contact</button>
-                        </div>
-                    </form>
-                </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="contact-phone" class="form-label">Phone</label>
+                        <input type="tel" class="form-control" name="phone" id="contact-phone">
+                    </div>
+                    <div class="mb-3">
+                        <label for="contact-email" class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" id="contact-email">
+                    </div>
+                    <hr>
+                    <div class="text-end">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Save Contact</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
-{% endblock %}
-
-
-{% block head_styles %}
-<style>
-    /* ... (your custom styles are perfect, no changes needed) ... */
-</style>
-{% endblock %}
+</div>
+    {% endblock %}

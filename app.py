@@ -230,15 +230,13 @@ def admin_dashboard():
         is_today_closed=(closure_status is not None),
         now=datetime.utcnow() # <-- ADD THIS LINE
     )
-# In Section 5: AUTHENTICATION & ADMIN ROUTES
-
 @app.route('/admin/users/create', methods=['POST'])
 @login_required
 @permission_required('add_users')
 def admin_create_user():
     """
     Handles creating a new user and automatically provisions a dedicated cash
-    account for them, linking it to their user profile.
+    account for them using a more robust code generation method.
     """
     db = get_db()
     try:
@@ -250,17 +248,21 @@ def admin_create_user():
             return redirect(url_for('admin_dashboard'))
 
         if User.get_by_username(username):
-             flash(f"A user with that username already exists.", "danger")
+             flash(f"A user with the name '{username}' already exists.", "danger")
              return redirect(url_for('admin_dashboard'))
 
-        # --- NEW: Automated Account Provisioning Logic ---
-        # 1. Create a dedicated cash account for this new user.
-        #    The name makes it easy to identify in the Chart of Accounts.
+        # --- Robust Account Code Logic ---
+        last_code_row = db.execute("SELECT MAX(CAST(code AS INTEGER)) FROM accounts").fetchone()
+        new_account_code = 1000
+        if last_code_row and last_code_row[0] is not None:
+            new_account_code = int(last_code_row[0]) + 1
+
         cash_account_name = f"Cash Drawer - {username}"
-        # You can assign a specific code range for user cash accounts
-        # For simplicity, we'll find the last Asset code and increment it.
-        last_asset_code_row = db.execute("SELECT MAX(code) FROM accounts WHERE type = 'Asset'").fetchone()
-        new_account_code = (int(last_asset_code_row[0]) + 1) if last_asset_code_row[0] else 1000
+        
+        existing_check = db.execute("SELECT id FROM accounts WHERE name = ? OR code = ?", (cash_account_name, new_account_code)).fetchone()
+        if existing_check:
+            flash(f"An account with the name '{cash_account_name}' or code '{new_account_code}' already exists. Please resolve manually.", "danger")
+            return redirect(url_for('admin_dashboard'))
 
         cursor = db.cursor()
         cursor.execute(
@@ -268,27 +270,27 @@ def admin_create_user():
             (new_account_code, cash_account_name)
         )
         new_cash_account_id = cursor.lastrowid
-        print(f"Created new cash account '{cash_account_name}' with ID: {new_cash_account_id}")
-
-        # 2. Now create the user and link them to their new cash account.
+        
+        # --- Create the user and link them to their new cash account ---
         admin_user = g.user
         farm_name = admin_user.farm_name
-        role = 'user' 
-        email = f"{username}@example.com" # Placeholder
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
         
+        # THIS IS THE FIX: We add a placeholder email to satisfy the database rule
+        placeholder_email = f"{username}@local.farm"
+        
+        # And we add `email` to the INSERT statement
         db.execute("""
             INSERT INTO users (username, farm_name, email, password_hash, role, cash_account_id)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (username, farm_name, email, hashed_password, role, new_cash_account_id))
+            VALUES (?, ?, ?, ?, 'user', ?)
+        """, (username, farm_name, placeholder_email, hashed_password, new_cash_account_id))
         
         db.commit()
-        # --- END of new logic ---
         
         flash(f"User '{username}' created with a dedicated cash account!", 'success')
 
     except Exception as e:
-        db.rollback() # IMPORTANT: Rollback changes if any step fails
+        db.rollback()
         flash(f"An unexpected error occurred: {e}", 'danger')
 
     return redirect(url_for('admin_dashboard'))
@@ -568,30 +570,51 @@ def dashboard():
 
 @app.route('/inventory')
 @login_required
-@check_day_closed('date')
 @permission_required('view_inventory')
 def inventory_dashboard():
+    #
+    # NOTE: I have removed the @check_day_closed decorator.
+    # This decorator is for POST requests (forms) and should not be on a
+    # GET request that just displays a page.
+    #
     db = get_db()
     inventory_items = db.execute("SELECT * FROM inventory ORDER BY name ASC").fetchall()
     total_value, low_stock_count, expiring_soon_count = 0, 0, 0
     processed_inventory_list = []
     for item_row in inventory_items:
         item = dict(item_row)
-        total_value += item.get('quantity', 0) * item.get('unit_cost', 0)
+        total_value += item.get('quantity', 0) * (item.get('unit_cost') or 0)
+        
         is_low_stock = item.get('low_stock_threshold') is not None and item.get('quantity', 0) <= item.get('low_stock_threshold')
         if is_low_stock: low_stock_count += 1
+        
         is_expiring_soon = False
-        if item.get('expiry_date'):
+        if item.get('expiry_date') and item.get('expiry_date') != '':
             try:
-                if (date.fromisoformat(item['expiry_date']) - date.today()).days <= 30:
+                # Add a check to ensure the date is valid before comparing
+                expiry_dt = date.fromisoformat(item['expiry_date'])
+                if (expiry_dt - date.today()).days <= 30:
                     is_expiring_soon = True
-            except (ValueError, TypeError): pass
+            except (ValueError, TypeError):
+                pass # Ignore invalid date formats
         if is_expiring_soon: expiring_soon_count += 1
+        
         item['is_low_stock'] = is_low_stock
         item['is_expiring_soon'] = is_expiring_soon
         processed_inventory_list.append(item)
+        
     stats = {'total_value': total_value, 'low_stock_count': low_stock_count, 'expiring_soon_count': expiring_soon_count}
-    return render_template('inventory.html', user=g.user, stats=stats, inventory_list=processed_inventory_list)
+    
+    # ======================================================
+    # THIS IS THE CORRECTED RETURN STATEMENT
+    # ======================================================
+    return render_template(
+        'inventory.html', 
+        user=g.user, 
+        stats=stats, 
+        inventory_list=processed_inventory_list,
+        today_date=date.today().strftime('%Y-%m-%d') # <-- THE MISSING LINE IS ADDED HERE
+    )
 @app.route('/poultry')
 @login_required
 @permission_required('view_poultry')
@@ -649,14 +672,13 @@ def poultry_dashboard():
         inactive_flocks=inactive_flocks,
         today_date=today_str
     )
-
 @app.route('/water')
 @login_required
 @permission_required('view_water')
 def water_dashboard():
     db = get_db()
     
-    # === YOUR ORIGINAL STATS QUERY (UNMODIFIED) ===
+    # --- STATS CALCULATION (Your original logic is good) ---
     stats_row = db.execute("SELECT (SELECT COALESCE(SUM(quantity * price), 0) FROM water_products) as total_stock_value, (SELECT COALESCE(SUM(quantity), 0) FROM water_products) as total_units_in_stock, (SELECT COALESCE(SUM(quantity_produced), 0) FROM water_production_log WHERE production_date = date('now', 'localtime')) as produced_today, (SELECT COALESCE(SUM(quantity_produced), 0) FROM water_production_log WHERE production_date >= date('now', '-6 days')) as produced_last_7_days").fetchone()
     stats = {
         'total_stock_value': stats_row['total_stock_value'] or 0,
@@ -665,20 +687,30 @@ def water_dashboard():
         'produced_last_7_days': stats_row['produced_last_7_days'] or 0
     }
     
-    # === UPDATED QUERIES ===
-    # This query now includes the new cost columns
-    production_logs = db.execute("SELECT wpl.*, wp.name as product_name FROM water_production_log wpl JOIN water_products wp ON wpl.product_id = wp.id ORDER BY wpl.production_date DESC, wpl.id DESC").fetchall()
+    # --- DATA FETCHING (This is the crucial part) ---
+    # This query now includes the new cost columns and the product price for the edit modal
+    production_logs = db.execute("""
+        SELECT wpl.*, wp.name as product_name, wp.price
+        FROM water_production_log wpl 
+        JOIN water_products wp ON wpl.product_id = wp.id 
+        ORDER BY wpl.production_date DESC, wpl.id DESC
+    """).fetchall()
     
     # NEW: Fetch inventory items that are materials for water production
     water_materials = db.execute("SELECT * FROM inventory WHERE category = 'Water Production' AND quantity > 0").fetchall()
 
+    # CRITICAL FIX: Fetch the list of water product types for the "Log Production" form
+    water_products = db.execute("SELECT * FROM water_products ORDER BY name ASC").fetchall()
+
+    # This is the return statement that sends ALL necessary data to the template
     return render_template(
         'water_management.html', 
         user=g.user, 
         stats=stats, 
         production_logs=production_logs,
-        water_materials=water_materials, # Pass the new list
-        today_date=date.today().strftime('%Y-%m-%d') # Pass today's date
+        water_materials=water_materials,
+        water_products=water_products, # <-- THE MISSING PIECE
+        today_date=date.today().strftime('%Y-%m-%d')
     )
 @app.route('/contacts')
 @login_required
@@ -686,37 +718,46 @@ def water_dashboard():
 def contacts_dashboard():
     db = get_db()
     
-    # This query fetches all contacts and calculates their current balance.
-    contacts_list_rows = db.execute("""
+    # --- Search Logic ---
+    search_query = request.args.get('q', '')
+    base_sql = """
         SELECT
-            c.id, c.name, c.type, c.phone, c.email, c.account_id,
-            COALESCE(
-                (SELECT SUM(je.amount) FROM journal_entries je WHERE je.debit_account_id = c.account_id) -
-                (SELECT SUM(je.amount) FROM journal_entries je WHERE je.credit_account_id = c.account_id),
-            0) as balance
+            c.id, c.name, c.type, c.phone, c.email,
+            (
+                (SELECT COALESCE(SUM(je.amount), 0) FROM journal_entries je WHERE je.debit_account_id = c.account_id)
+                -
+                (SELECT COALESCE(SUM(je.amount), 0) FROM journal_entries je WHERE je.credit_account_id = c.account_id)
+            ) as balance
         FROM contacts c
-        ORDER BY c.name ASC
-    """).fetchall()
+    """
+    params = []
+    if search_query:
+        base_sql += " WHERE c.name LIKE ?"
+        params.append(f"%{search_query}%")
+    base_sql += " ORDER BY c.name ASC"
+    
+    contacts_list = db.execute(base_sql, params).fetchall()
 
-    accounts_receivable, accounts_payable = 0, 0
-    processed_contacts_list = [dict(row) for row in contacts_list_rows]
-
-    for contact in processed_contacts_list:
+    # --- KPI Card Calculations ---
+    accounts_receivable = 0
+    accounts_payable = 0
+    for contact in contacts_list:
         if contact['type'] == 'Customer' and contact['balance'] > 0:
             accounts_receivable += contact['balance']
         elif contact['type'] == 'Supplier' and contact['balance'] < 0:
             accounts_payable += -contact['balance']
             
     stats = {
+        'total_contacts': len(contacts_list),
         'accounts_receivable': accounts_receivable,
         'accounts_payable': accounts_payable
     }
     
     return render_template(
-        'contacts.html',
+        'contacts.html', # This now points to our single, redesigned template
         user=g.user,
         stats=stats,
-        contacts_list=processed_contacts_list
+        contacts_list=contacts_list
     )
 # ==============================================================================
 # 7. FINANCIAL CENTER & BOOKKEEPING ROUTES
@@ -896,6 +937,65 @@ def add_account():
 # ==============================================================================
 # 8. DATA ENTRY ROUTES (THE "THREE PILLARS")
 # ==============================================================================
+# Add this new route to Section 8 in app.py
+
+@app.route('/transactions/customer', methods=['GET', 'POST'])
+@login_required
+@permission_required('add_sale') # Reuse permission
+def customer_transaction():
+    db = get_db()
+    
+    if request.method == 'POST':
+        try:
+            tx_date = request.form.get('date')
+            customer_id = int(request.form.get('customer_id'))
+            tx_type = request.form.get('transaction_type')
+            payment_account_id = int(request.form.get('payment_account_id'))
+            amount = float(request.form.get('amount'))
+            description = request.form.get('description')
+            
+            # Get the customer's personal A/R account
+            customer = db.execute("SELECT * FROM contacts WHERE id = ?", (customer_id,)).fetchone()
+            customer_ar_id = customer['account_id']
+            if not customer_ar_id:
+                raise Exception("This customer does not have a linked receivable account.")
+            
+            # --- ACCOUNTING LOGIC ---
+            if tx_type == 'deposit':
+                # Customer is paying in advance (DEPOSIT)
+                debit_id, credit_id = payment_account_id, customer_ar_id
+            elif tx_type == 'credit_sale':
+                # Customer is taking goods on credit (CREDIT SALE)
+                sales_revenue_id = db.execute("SELECT id FROM accounts WHERE name = 'Product Sales'").fetchone()['id']
+                debit_id, credit_id = customer_ar_id, sales_revenue_id
+            else:
+                raise Exception("Invalid transaction type.")
+
+            db.execute("""
+                INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_contact_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (tx_date, description, debit_id, credit_id, amount, g.user.id, customer_id))
+            db.commit()
+
+            flash(f"Transaction for {customer['name']} recorded successfully.", "success")
+            return redirect(url_for('contact_ledger', contact_id=customer_id))
+            
+        except Exception as e:
+            db.rollback()
+            flash(f"An error occurred: {e}", "danger")
+            return redirect(url_for('customer_transaction'))
+
+    # For GET request, prepare data for the form
+    customers = db.execute("SELECT * FROM contacts WHERE type = 'Customer' ORDER BY name").fetchall()
+    asset_accounts = db.execute("SELECT * FROM accounts WHERE type = 'Asset' AND name NOT LIKE 'A/R - %' ORDER BY name").fetchall()
+    
+    return render_template(
+        'customer_transaction.html',
+        user=g.user,
+        customers=customers,
+        asset_accounts=asset_accounts,
+        today_date=date.today().strftime('%Y-%m-%d')
+    )
 @app.route('/sales/new')
 @login_required
 @check_day_closed('date')
@@ -1454,48 +1554,41 @@ def inventory_report():
         total_inventory_sale_value=total_inventory_sale_value,
         report_date=report_date
     )
-@app.route('/reports/inventory') # A better URL for your reporting section
+# ==============================================================================
+# In app.py, DELETE your old inventory report routes and REPLACE with this one.
+# ==============================================================================
+@app.route('/report/inventory')
 @login_required
-@permission_required('view_reports') # Make sure users have this permission
+@permission_required('view_reports')
 def report_inventory():
     """
     Generates a detailed report of CURRENT inventory status and valuation.
-    This is a snapshot, not a historical report.
     """
     db = get_db()
     
-    # This query calculates the value per item and gets all necessary details
     inventory_items = db.execute("""
         SELECT 
-            name, 
-            category, 
-            quantity, 
-            unit, 
-            unit_cost,
-            sale_price,
-            low_stock_threshold,
-            expiry_date,
+            name, category, quantity, unit, 
+            unit_cost, sale_price, low_stock_threshold,
             (quantity * unit_cost) AS total_cost_value,
             (quantity * sale_price) AS total_sale_value
         FROM inventory 
         ORDER BY category, name
     """).fetchall()
 
-    # Calculate overall summary statistics for the KPI cards
-    total_inventory_cost = sum(item['total_cost_value'] for item in inventory_items)
-    total_inventory_sale_value = sum(item['total_sale_value'] for item in inventory_items)
+    total_inventory_cost = sum(item['total_cost_value'] for item in inventory_items if item['total_cost_value'] is not None)
+    total_inventory_sale_value = sum(item['total_sale_value'] for item in inventory_items if item['total_sale_value'] is not None)
     
-    # Get today's date for the report header
     report_date = date.today().strftime('%B %d, %Y')
 
-    # Pass the data to the template using the variable names it expects
     return render_template(
-        'report_inventory.html', # This is the correct template file
+        'report_inventory.html', # <-- This is the final, correct filename.
         user=g.user,
         inventory_items=inventory_items,
         total_inventory_cost=total_inventory_cost,
         total_inventory_sale_value=total_inventory_sale_value,
-        report_date=report_date
+        report_date=report_date,
+        now=datetime.utcnow()
     )
 @app.route('/report/daily-sales')
 @login_required
@@ -1928,70 +2021,77 @@ def deactivate_flock():
         flash(f"An error occurred: {e}", "danger")
         
     return redirect(url_for('poultry_dashboard'))
-@app.route('/inventory/update', methods=['POST'])
+@app.route('/inventory/item/update/<int:item_id>', methods=['POST'])
 @login_required
-@permission_required('edit_inventory') # Assumes you have this permission
-def update_inventory_item():
-    """Handles updating an existing inventory item's details."""
+@permission_required('edit_inventory')
+def update_inventory_item(item_id):
+    """
+    Handles updating an existing inventory item's details.
+    Note: This function correctly does NOT update the current quantity on hand.
+    That should be done via 'Add Stock' or 'Log Usage'.
+    """
     db = get_db()
     try:
-        # Get all the data from the edit form
-        item_id = request.form.get('item_id')
+        # Extract all data from the edit form
         name = request.form.get('name')
         category = request.form.get('category')
-        quantity = float(request.form.get('quantity'))
         unit = request.form.get('unit')
-        low_stock_threshold = float(request.form.get('low_stock_threshold'))
-        unit_cost = float(request.form.get('unit_cost'))
-        sale_price = float(request.form.get('sale_price'))
-        expiry_date = request.form.get('expiry_date') or None # Handle empty date
+        low_stock_threshold = float(request.form.get('low_stock_threshold', 0))
+        unit_cost = float(request.form.get('unit_cost', 0))
+        sale_price = float(request.form.get('sale_price', 0))
+        expiry_date = request.form.get('expiry_date') or None
 
-        if not all([item_id, name, category, unit]):
-             flash('Missing required fields for update.', 'danger')
-             return redirect(url_for('inventory_dashboard'))
+        # Basic validation
+        if not all([name, category, unit]):
+            flash('Item Name, Category, and Unit are required.', 'warning')
+            return redirect(url_for('inventory_dashboard'))
 
-        # Execute the SQL UPDATE command
+        # Update the item in the database
         db.execute("""
             UPDATE inventory SET
-                name = ?, category = ?, quantity = ?, unit = ?, 
-                low_stock_threshold = ?, unit_cost = ?, sale_price = ?, expiry_date = ?
+                name = ?, category = ?, unit = ?, low_stock_threshold = ?,
+                unit_cost = ?, sale_price = ?, expiry_date = ?
             WHERE id = ?
-        """, (name, category, quantity, unit, low_stock_threshold, unit_cost, sale_price, expiry_date, item_id))
-        
+        """, (name, category, unit, low_stock_threshold, unit_cost, sale_price, expiry_date, item_id))
         db.commit()
-        flash(f"'{name}' was updated successfully!", 'success')
 
-    except (ValueError, TypeError) as e:
+        flash(f"Item '{name}' updated successfully!", 'success')
+
+    except (ValueError, TypeError):
+        flash("Invalid data provided. Please check your numbers.", 'danger')
+    except sqlite3.IntegrityError:
+        flash("An inventory item with that name might already exist.", 'danger')
         db.rollback()
-        flash(f"Invalid data submitted for update. Please check numbers. Error: {e}", 'danger')
     except Exception as e:
+        flash(f"An unexpected error occurred: {e}", 'danger')
         db.rollback()
-        flash(f"An unexpected error occurred during update: {e}", 'danger')
 
     return redirect(url_for('inventory_dashboard'))
-
-
-@app.route('/inventory/delete/<int:item_id>', methods=['POST'])
+@app.route('/inventory/item/delete/<int:item_id>', methods=['POST'])
 @login_required
-@permission_required('delete_inventory') # Assumes you have this permission
+@permission_required('edit_inventory') # Can reuse the same permission
 def delete_inventory_item(item_id):
-    """Handles deleting an inventory item. DANGEROUS action."""
+    """
+    Handles deleting an inventory item ONLY if it has no transaction history.
+    This protects data integrity.
+    """
     db = get_db()
     try:
-        # IMPORTANT: In a real-world app, you might check if this item is
-        # linked to past sales records before deleting. For now, we will proceed.
-        item = db.execute("SELECT name FROM inventory WHERE id = ?", (item_id,)).fetchone()
-        if item:
-            db.execute("DELETE FROM inventory WHERE id = ?", (item_id,))
-            db.commit()
-            flash(f"Inventory item '{item['name']}' has been permanently deleted.", 'success')
-        else:
-            flash("Item not found.", 'warning')
-            
+        # SECURITY CHECK: Before deleting, check if this item is used in any logs.
+        usage_count = db.execute("SELECT COUNT(id) FROM inventory_log WHERE inventory_item_id = ?", (item_id,)).fetchone()[0]
+
+        if usage_count > 0:
+            flash("Cannot delete this item because it has a history of being used. Deleting it would corrupt your old reports.", "danger")
+            return redirect(url_for('inventory_dashboard'))
+
+        # If it has no history, it's safe to delete.
+        db.execute("DELETE FROM inventory WHERE id = ?", (item_id,))
+        db.commit()
+        flash("Inventory item successfully deleted.", "success")
+
     except Exception as e:
+        flash(f"An error occurred: {e}", "danger")
         db.rollback()
-        # This can happen if the item is part of a transaction with foreign key constraints
-        flash(f"Could not delete item. It may be linked to other records (like sales or feed logs). Error: {e}", 'danger')
 
     return redirect(url_for('inventory_dashboard'))
 # ==============================================================================
@@ -2086,56 +2186,141 @@ def log_brooding_mortality():
 @login_required
 @permission_required('edit_poultry')
 def transfer_brooding_batch():
-    """Finalizes costs and transfers surviving birds to an active flock."""
     db = get_db()
     try:
-        batch_id = int(request.form.get('batch_id'))
-        transfer_date = request.form.get('transfer_date')
-        target_flock_id = int(request.form.get('target_flock_id'))
-
-        # Get the batch details
-        batch = db.execute("SELECT * FROM brooding_batches WHERE id = ?", (batch_id,)).fetchone()
-        if not batch:
-            flash("Brooding batch not found.", "danger")
-            return redirect(url_for('brooding_dashboard'))
-
-        # --- CALCULATE FINAL COSTS ---
-        # 1. Get cost of feed, meds, etc.
-        inventory_cost_row = db.execute("SELECT SUM(cost_of_usage) as total FROM inventory_log WHERE brooding_batch_id = ?", (batch_id,)).fetchone()
-        inventory_cost = inventory_cost_row['total'] or 0
-        # 2. Add the initial purchase cost of the chicks
-        total_cost = batch['initial_cost'] + inventory_cost
-        # 3. Calculate final cost per surviving bird
-        surviving_birds = batch['current_chick_count']
-        final_cost_per_bird = total_cost / surviving_birds if surviving_birds > 0 else 0
+        # ... (Get form data: batch_id, transfer_date, target_flock_id) ...
+        # ... (Calculate final_cost_per_bird as you did before) ...
+        
+        # --- NEW LOGIC: UPDATE THE TARGET FLOCK ---
+        # 1. Get the target flock's current data
+        target_flock = db.execute("SELECT bird_count, cost_per_bird FROM poultry_flocks WHERE id = ?", (target_flock_id,)).fetchone()
+        
+        # 2. Calculate the new average cost per bird for the flock
+        current_total_value = (target_flock['bird_count'] or 0) * (target_flock['cost_per_bird'] or 0)
+        new_birds_value = surviving_birds * final_cost_per_bird
+        new_total_birds = (target_flock['bird_count'] or 0) + surviving_birds
+        new_average_cost = (current_total_value + new_birds_value) / new_total_birds if new_total_birds > 0 else 0
 
         # --- UPDATE TABLES IN A TRANSACTION ---
-        # 1. Update the brooding batch to 'Transferred' and store final cost
-        db.execute("""
-            UPDATE brooding_batches SET status = 'Transferred', transfer_date = ?, final_cost_per_bird = ?
-            WHERE id = ?
-        """, (transfer_date, final_cost_per_bird, batch_id))
+        # Update the brooding batch (as before)
+        db.execute("UPDATE brooding_batches SET ... WHERE id = ?", (..., batch_id))
         
-        # 2. Add the surviving birds to the target active flock
-        db.execute("UPDATE poultry_flocks SET bird_count = bird_count + ? WHERE id = ?", (surviving_birds, target_flock_id))
+        # Update the active flock with new bird count AND new average cost
+        db.execute("""
+            UPDATE poultry_flocks SET bird_count = ?, cost_per_bird = ? 
+            WHERE id = ?
+        """, (new_total_birds, new_average_cost, target_flock_id))
         
         db.commit()
-        flash(f"{surviving_birds} birds successfully transferred. Final cost per bird: ₦{final_cost_per_bird:,.2f}", "success")
+        flash(f"{surviving_birds} birds successfully transferred. New flock average cost/bird: ₦{new_average_cost:,.2f}", "success")
     except Exception as e:
         db.rollback()
         flash(f"An error occurred: {e}", "danger")
     return redirect(url_for('brooding_dashboard'))
+# Add this new route to app.py, e.g., in Section 13
+
+@app.route('/poultry/flock/log-mortality', methods=['POST'])
+@login_required
+@permission_required('edit_poultry')
+@check_day_closed('log_date')
+def log_flock_mortality():
+    db = get_db()
+    try:
+        flock_id = int(request.form.get('flock_id'))
+        mortality_count = int(request.form.get('mortality_count'))
+        log_date = request.form.get('log_date')
+        
+        # --- Get Flock and Account Details ---
+        flock = db.execute("SELECT bird_count, cost_per_bird FROM poultry_flocks WHERE id = ?", (flock_id,)).fetchone()
+        if not flock:
+            raise Exception("Flock not found.")
+
+        if mortality_count > flock['bird_count']:
+            flash(f"Cannot log {mortality_count} mortalities. Only {flock['bird_count']} birds in flock.", "danger")
+            return redirect(url_for('poultry_dashboard'))
+        
+        asset_account = db.execute("SELECT id FROM accounts WHERE name = 'Laying Flock Asset'").fetchone()
+        expense_account = db.execute("SELECT id FROM accounts WHERE name = 'Livestock Loss Expense'").fetchone()
+        if not asset_account or not expense_account:
+            raise Exception("Required asset or expense accounts not found in Chart of Accounts.")
+
+        # --- Calculate Financial Loss ---
+        total_loss_value = mortality_count * (flock['cost_per_bird'] or 0)
+        
+        # --- DATABASE TRANSACTION ---
+        # 1. Operationally: Reduce the bird count in the flock
+        db.execute("UPDATE poultry_flocks SET bird_count = bird_count - ? WHERE id = ?", (mortality_count, flock_id))
+        
+        # 2. Financially: Create the journal entry
+        if total_loss_value > 0:
+            db.execute("""
+                INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (log_date, f"Mortality loss of {mortality_count} bird(s) from flock ID {flock_id}", expense_account['id'], asset_account['id'], total_loss_value, g.user.id))
+
+        db.commit()
+        flash(f"{mortality_count} mortalities recorded. Financial loss of ₦{total_loss_value:,.2f} posted to expenses.", "success")
+
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred: {e}", "danger")
+
+    return redirect(url_for('poultry_dashboard'))
 # ==============================================================================
 # 14. Table Water  route
 # ==============================================================================
-# In app.py
+@app.route('/water/product/add', methods=['POST'])
+@login_required
+@permission_required('edit_water')
+def add_water_product():
+    """
+    Handles creating a new water product type.
+    FINAL CORRECTED LOGIC: Also creates a corresponding, sellable item in the 
+    main inventory table. This is the crucial link.
+    """
+    db = get_db()
+    try:
+        name = request.form.get('name')
+        price = float(request.form.get('price', 0))
+
+        if not name or price <= 0:
+            flash('Product Name and a positive Price are required.', 'warning')
+            return redirect(url_for('water_dashboard'))
+
+        # --- DATABASE TRANSACTION ---
+        # 1. Create the product definition in the `water_products` table.
+        cursor = db.cursor()
+        cursor.execute("INSERT INTO water_products (name, price, quantity) VALUES (?, ?, 0)", (name, price))
+        
+        # 2. CRITICAL STEP: Create the matching item in the main `inventory` table.
+        #    This makes it exist so it can be sold. The quantity starts at 0.
+        db.execute("""
+            INSERT INTO inventory (name, category, quantity, unit, sale_price, unit_cost)
+            VALUES (?, 'Finished Goods', 0, 'Unit', ?, 0)
+        """, (name, price))
+        
+        db.commit()
+        flash(f"New water product '{name}' added and linked to inventory for sales!", 'success')
+
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash(f"A product or inventory item with the name '{name}' already exists.", 'danger')
+    except Exception as e:
+        db.rollback()
+        flash(f"An unexpected error occurred: {e}", 'danger')
+
+    return redirect(url_for('water_dashboard'))
 
 @app.route('/water/production/log', methods=['POST'])
 @login_required
-@check_day_closed('date')
 @permission_required('edit_water')
+@check_day_closed('production_date')
 def add_water_production_log():
-    """Handles logging new water production and updating stock."""
+    """
+    Handles logging new water production.
+    FINAL CORRECTED LOGIC: Updates stock in BOTH the `water_products` table (for KPIs)
+    and the `inventory` table (for sales).
+    """
     db = get_db()
     try:
         production_date = request.form.get('production_date')
@@ -2147,15 +2332,21 @@ def add_water_production_log():
             flash('Date, Product, and a positive Quantity are required.', 'warning')
             return redirect(url_for('water_dashboard'))
 
-        # --- Start Database Transaction ---
+        # --- DATABASE TRANSACTION ---
+        # 1. Add to the production log for history.
         db.execute("""
             INSERT INTO water_production_log (production_date, product_id, quantity_produced, notes)
             VALUES (?, ?, ?, ?)
         """, (production_date, product_id, quantity_produced, notes))
         
+        # 2. Update the 'quantity' in the `water_products` table for the dashboard KPIs.
+        db.execute("UPDATE water_products SET quantity = quantity + ? WHERE id = ?", (quantity_produced, product_id))
+
+        # 3. CRITICAL STEP: Find the product's name and UPDATE THE MAIN INVENTORY STOCK.
         product_info = db.execute("SELECT name FROM water_products WHERE id = ?", (product_id,)).fetchone()
         if product_info:
             inventory_item_name = product_info['name']
+            # This is the line that makes the items available for sale.
             db.execute("UPDATE inventory SET quantity = quantity + ? WHERE name = ?", 
                        (quantity_produced, inventory_item_name))
         
@@ -2163,45 +2354,10 @@ def add_water_production_log():
         flash('Water production logged and stock updated successfully!', 'success')
 
     except Exception as e:
-        # This is the 'except' block that was missing
         db.rollback()
         flash(f"An unexpected error occurred: {e}", 'danger')
-        print(f"!!!!!!!!!! WATER LOG ERROR: {e} !!!!!!!!!!!")
-
+        
     return redirect(url_for('water_dashboard'))
-@app.route('/water/product/add', methods=['POST'])
-@login_required
-@check_day_closed('date')
-@permission_required('edit_water')
-def add_water_product():
-    """Handles creating a new water product type from the modal."""
-    try:
-        # Extract data from the form
-        name = request.form.get('name')
-        price = float(request.form.get('price', 0))
-
-        # Basic validation
-        if not name or price <= 0:
-            flash('Product Name and a positive Price are required.', 'warning')
-            return redirect(url_for('water_dashboard'))
-
-        # Insert into the database
-        db = get_db()
-        db.execute("INSERT INTO water_products (name, price, quantity) VALUES (?, ?, 0)", 
-                   (name, price))
-        db.commit()
-
-        flash(f"New water product '{name}' added successfully!", 'success')
-
-    except (ValueError, TypeError) as e:
-        flash(f"Invalid price provided. Please enter a valid number. Error: {e}", 'danger')
-    except sqlite3.IntegrityError:
-        flash(f"A water product with the name '{name}' already exists.", 'danger')
-    except Exception as e:
-        flash(f"An unexpected error occurred: {e}", 'danger')
-
-    return redirect(url_for('water_dashboard'))
-
 @app.route('/water/product/update/<int:product_id>', methods=['POST'])
 @login_required
 @check_day_closed('date')
@@ -2283,43 +2439,76 @@ def calculate_water_cost():
 # ==============================================================================
 # 15. CONTACT ROUTS
 # ==============================================================================
-# In app.py
-
 @app.route('/bookkeeping/contact_ledger/<int:contact_id>')
 @login_required
-@check_day_closed('date')
 @permission_required('view_bookkeeping')
 def contact_ledger(contact_id):
-    """Displays a ledger of all transactions for a specific contact."""
-    
-    # --- THIS IS THE FIX ---
-    # Use the new get_db() function
+    """
+    Displays a detailed, printable Statement of Account for a specific contact,
+    including a date range filter, opening balance, and running balance.
+    """
     db = get_db()
-
-    # Get the selected contact's details
+    
+    # --- Get Contact Details ---
     contact = db.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,)).fetchone()
-    if not contact:
-        flash("Contact not found.", "danger")
+    if not contact or not contact['account_id']:
+        flash("Contact not found or does not have a linked ledger account.", "danger")
         return redirect(url_for('contacts_dashboard'))
+    
+    contact_account_id = contact['account_id']
 
-    # Get all journal entries related to this contact
+    # --- Handle Date Range ---
+    start_date, end_date = _get_report_dates(request.args)
+    
+    # --- Calculate Opening Balance ---
+    opening_balance_row = db.execute("""
+        SELECT (
+            (SELECT COALESCE(SUM(amount), 0) FROM journal_entries WHERE debit_account_id = ? AND transaction_date < ?) -
+            (SELECT COALESCE(SUM(amount), 0) FROM journal_entries WHERE credit_account_id = ? AND transaction_date < ?)
+        ) as opening_balance
+    """, (contact_account_id, start_date, contact_account_id, start_date)).fetchone()
+    opening_balance = opening_balance_row['opening_balance'] if opening_balance_row else 0
+
+    # --- THIS IS THE CORRECTED QUERY ---
+    # It now joins with the accounts table TWICE to get both debit and credit account names
     transactions = db.execute("""
-        SELECT je.transaction_date, je.description, je.amount,
-               debit_acc.name as debit_account,
-               credit_acc.name as credit_account
+        SELECT 
+            je.transaction_date, 
+            je.description,
+            CASE WHEN je.debit_account_id = ? THEN je.amount ELSE 0 END as debit,
+            CASE WHEN je.credit_account_id = ? THEN je.amount ELSE 0 END as credit,
+            debit_acc.name as debit_account_name,
+            credit_acc.name as credit_account_name
         FROM journal_entries je
         JOIN accounts debit_acc ON je.debit_account_id = debit_acc.id
         JOIN accounts credit_acc ON je.credit_account_id = credit_acc.id
-        WHERE je.related_contact_id = ?
+        WHERE (je.debit_account_id = ? OR je.credit_account_id = ?)
+        AND je.transaction_date BETWEEN ? AND ?
         ORDER BY je.transaction_date ASC, je.id ASC
-    """, (contact_id,)).fetchall()
-    
-    # The connection is now closed automatically by @app.teardown_appcontext
-    
-    return render_template('contact_ledger.html', 
-                           user=g.user, # Use g.user, which is set by the decorator
-                           contact=contact,
-                           transactions=transactions)
+    """, (contact_account_id, contact_account_id, contact_account_id, contact_account_id, start_date, end_date)).fetchall()
+
+    # --- Calculate Running Balance (logic is the same) ---
+    ledger_entries = []
+    running_balance = opening_balance
+    for tx_row in transactions:
+        tx = dict(tx_row)
+        running_balance += tx['debit'] - tx['credit']
+        tx['running_balance'] = running_balance
+        ledger_entries.append(tx)
+
+    closing_balance = running_balance
+
+    return render_template(
+        'contact_ledger.html', 
+        user=g.user,
+        contact=contact,
+        start_date=start_date,
+        end_date=end_date,
+        opening_balance=opening_balance,
+        closing_balance=closing_balance,
+        ledger_entries=ledger_entries,
+        now=datetime.utcnow()
+    )
 @app.route('/contacts/edit/<int:contact_id>', methods=['GET'])
 @login_required
 @check_day_closed('date')
@@ -2383,37 +2572,55 @@ def delete_contact(contact_id):
     conn.close()
     flash("Contact successfully deleted.", "success")
     return redirect(url_for('contacts_dashboard'))
-# In app.py
-
 @app.route('/contacts/add', methods=['POST'])
 @login_required
-@check_day_closed('date')
 @permission_required('edit_contacts')
 def add_contact():
-    """Handles the submission of the new contact form."""
-    name = request.form.get('name')
-    contact_type = request.form.get('type')
-    phone = request.form.get('phone')
-    email = request.form.get('email')
-
-    if not name or not contact_type:
-        flash("Name and Contact Type are required.", "warning")
-        return redirect(url_for('contacts_dashboard'))
-
+    db = get_db()
     try:
-        # --- THIS IS THE FIX ---
-        # Use the new get_db() function
-        db = get_db()
-        db.execute("INSERT INTO contacts (name, type, phone, email) VALUES (?, ?, ?, ?)",
-                     (name, contact_type, phone, email))
+        name = request.form.get('name')
+        contact_type = request.form.get('type')
+        phone = request.form.get('phone')
+        email = request.form.get('email')
+
+        if not name or not contact_type:
+            flash("Name and Contact Type are required.", "warning")
+            return redirect(url_for('contacts_dashboard'))
+
+        new_account_id = None
+        # --- NEW LOGIC: If the contact is a Customer, create their A/R account ---
+        if contact_type == 'Customer':
+            # 1. Find the main "Accounts Receivable" parent account
+            parent_ar_acc = db.execute("SELECT code FROM accounts WHERE name = 'Accounts Receivable'").fetchone()
+            if not parent_ar_acc:
+                raise Exception("CRITICAL: Parent 'Accounts Receivable' account not found.")
+            parent_code = parent_ar_acc['code']
+            
+            # 2. Find the last sub-account code to create a new one
+            last_sub_acc_row = db.execute("SELECT MAX(code) FROM accounts WHERE code LIKE ?", (f"{parent_code}.%",)).fetchone()
+            new_code = f"{parent_code}.01"
+            if last_sub_acc_row and last_sub_acc_row[0]:
+                parts = last_sub_acc_row[0].split('.')
+                new_code = f"{parent_code}.{int(parts[1]) + 1:02d}"
+
+            # 3. Create the new sub-account for this customer
+            account_name = f"A/R - {name}"
+            cursor = db.cursor()
+            cursor.execute("INSERT INTO accounts (code, name, type) VALUES (?, ?, 'Asset')", (new_code, account_name))
+            new_account_id = cursor.lastrowid
+
+        # 4. Insert the contact and link their new account_id
+        db.execute("INSERT INTO contacts (name, type, phone, email, account_id) VALUES (?, ?, ?, ?, ?)",
+                     (name, contact_type, phone, email, new_account_id))
         db.commit()
         flash(f"Contact '{name}' added successfully!", "success")
-    except sqlite3.IntegrityError:
-        flash(f"Error: A contact with the name '{name}' already exists.", "danger")
-    except sqlite3.Error as e:
-        flash(f"Database error: {e}", "danger")
+
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred: {e}", "danger")
     
     return redirect(url_for('contacts_dashboard'))
+
 # ==============================================================================
 # 16. ERROR HANDLERS & MAIN EXECUTION
 # ==============================================================================

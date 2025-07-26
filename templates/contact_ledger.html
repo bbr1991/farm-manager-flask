@@ -1,38 +1,115 @@
 {% extends "base.html" %}
-{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - Contact Ledger{% endblock %}
+{% block title %}Contact Ledger for {{ contact.name }}{% endblock %}
 
 {% block content %}
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Transaction Ledger for: {{ contact.name }}</h2>
-        <a href="{{ url_for('contacts_dashboard') }}" class="btn btn-secondary">Back to Contacts</a>
+    <!-- On-Screen Header -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom no-print">
+        <h1 class="h2">Statement of Account</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <a href="{{ url_for('contact_balances') }}" class="btn btn-sm btn-outline-secondary me-2">
+                <i class="bi bi-arrow-left"></i> Back to Balances
+            </a>
+            <button onclick="window.print();" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-printer-fill"></i> Print Statement
+            </button>
+        </div>
     </div>
-    
+
+    <!-- Date Selection Form -->
+    <form method="GET" action="{{ url_for('contact_ledger', contact_id=contact.id) }}" class="card p-3 mb-4 no-print bg-light">
+        <div class="row align-items-end">
+            <div class="col-md-4">
+                <label for="start_date" class="form-label">Start Date</label>
+                <input type="date" class="form-control" name="start_date" id="start_date" value="{{ start_date }}">
+            </div>
+            <div class="col-md-4">
+                <label for="end_date" class="form-label">End Date</label>
+                <input type="date" class="form-control" name="end_date" id="end_date" value="{{ end_date }}">
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary">Generate Statement</button>
+            </div>
+        </div>
+    </form>
+
+    <!-- Main Statement Card -->
     <div class="card shadow-sm">
+        <!-- Print-Only Header -->
+        <div class="card-header d-none print-show text-center">
+            <h2>Statement of Account</h2>
+            <p class="mb-0"><strong>For: {{ contact.name }}</strong></p>
+            <p><strong>Period:</strong> {{ start_date }} to {{ end_date }}</p>
+        </div>
+
         <div class="card-body">
-            <table class="table table-striped">
-                <thead>
+            <table class="table">
+                <thead class="table-light">
                     <tr>
                         <th>Date</th>
                         <th>Description</th>
-                        <th>Debit Account</th>
-                        <th>Credit Account</th>
-                        <th class="text-end">Amount</th>
+                        <th class="text-end">Debit (Charges)</th>
+                        <th class="text-end">Credit (Payments)</th>
+                        <th class="text-end">Balance</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for tx in transactions %}
-                    <tr>
-                        <td>{{ tx.transaction_date }}</td>
-                        <td>{{ tx.description }}</td>
-                        <td>{{ tx.debit_account }}</td>
-                        <td>{{ tx.credit_account }}</td>
-                        <td class="text-end">₦{{ '{:,.2f}'.format(tx.amount) }}</td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="5" class="text-center">No transactions found for this contact.</td></tr>
-                    {% endfor %}
+                    <!-- Opening Balance Row -->
+    <tr>
+        <td colspan="4"><strong>Opening Balance as at {{ start_date }}</strong></td>
+        <td class="text-end"><strong>₦{{ '{:,.2f}'.format(opening_balance) }}</strong></td>
+    </tr>
+    
+    <!-- Loop through transactions -->
+    {% for entry in ledger_entries %}
+    <tr>
+        <td>{{ entry.transaction_date }}</td>
+        <td>
+            {{ entry.description }}<br>
+            <!-- Display the contra account name -->
+            <small class="text-muted">
+                {% if entry.debit > 0 %}
+                    Contra: {{ entry.credit_account_name }}
+                {% else %}
+                    Contra: {{ entry.debit_account_name }}
+                {% endif %}
+            </small>
+        </td>
+        <td class="text-end">{{ '₦{:,.2f}'.format(entry.debit) if entry.debit > 0 else '' }}</td>
+        <td class="text-end text-success">{{ '₦{:,.2f}'.format(entry.credit) if entry.credit > 0 else '' }}</td>
+        <td class="text-end">{{ '{:,.2f}'.format(entry.running_balance) }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="text-center text-muted p-3">No transactions in this period.</td></tr>
+                                        {% endfor %}
                 </tbody>
+                <tfoot class="table-group-divider">
+                    <tr>
+                        <th colspan="4" class="fs-5 text-end">Closing Balance as at {{ end_date }}:</th>
+                        <th class="fs-5 text-end">
+                            <span class="badge fs-6 {{ 'bg-danger' if closing_balance > 0 else 'bg-success' }}">
+                                ₦{{ '{:,.2f}'.format(closing_balance) }}
+                            </span>
+                        </th>
+                    </tr>
+                </tfoot>
             </table>
         </div>
     </div>
+
+    <style>
+    @media print {
+        .no-print { display: none !important; }
+        .print-show { display: block !important; }
+        body, .card {
+            border: none !important;
+            box-shadow: none !important;
+        }
+        a { text-decoration: none; color: #000; }
+        .badge {
+            border: 1px solid #ccc;
+            color: #000 !important;
+            background-color: #fff !important;
+        }
+    }
+    </style>
 {% endblock %}
