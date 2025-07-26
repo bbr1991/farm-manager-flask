@@ -1,349 +1,297 @@
 {% extends "base.html" %}
 {% block title %}Poultry Management{% endblock %}
 
+{% block head_styles %}
+    <style>
+        .kpi-label { font-size: 0.8rem; text-transform: uppercase; font-weight: bold; }
+        .kpi-value { font-size: 1.75rem; font-weight: bold; }
+        .kpi-icon { font-size: 2.5rem; opacity: 0.3; }
+        .text-gray-800 { color: #5a5c69 !important; }
+    </style>
+{% endblock %}
+
 {% block content %}
     <!-- Page Header -->
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">Poultry Management</h1>
+        <h1 class="h2"><i class="bi bi-egg-fried me-2"></i>Laying Flocks</h1>
         <div class="btn-toolbar mb-2 mb-md-0">
-            <button type="button" class="btn btn-info me-2" data-bs-toggle="modal" data-bs-target="#logFeedModal">
-                <i class="bi bi-basket3-fill"></i> Log Feed Usage
-            </button>
-            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addFlockModal">
+            <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#addFlockModal">
                 <i class="bi bi-plus-circle-fill"></i> New Flock
             </button>
-            <a href="#egg-log-form" class="btn btn-success ms-2"><i class="bi bi-egg-fill"></i> Log Eggs</a>
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#logEggModal">
+                <i class="bi bi-egg-fill"></i> Log Eggs
+            </button>
         </div>
     </div>
 
     <!-- KPI Cards -->
     <div class="row">
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-primary shadow h-100 py-2">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
                 <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Active Birds</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_active_birds }}</div>
-                        </div>
-                        <div class="col-auto"><i class="bi bi-people-fill fs-2 text-gray-300"></i></div>
+                    <div class="row align-items-center">
+                        <div class="col"><div class="kpi-label text-primary">Active Birds</div><div class="kpi-value">{{ stats.total_active_birds }}</div></div>
+                        <div class="col-auto kpi-icon"><i class="bi bi-people-fill"></i></div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-success shadow h-100 py-2">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
                 <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Eggs Collected Today</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.eggs_today }}</div>
-                        </div>
-                        <div class="col-auto"><i class="bi bi-egg-fried fs-2 text-gray-300"></i></div>
+                    <div class="row align-items-center">
+                        <div class="col"><div class="kpi-label text-success">Eggs Today</div><div class="kpi-value">{{ stats.eggs_today }}</div></div>
+                        <div class="col-auto kpi-icon"><i class="bi bi-egg-fried"></i></div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-info shadow h-100 py-2">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
                 <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Eggs - Last 7 Days</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.eggs_last_7_days }}</div>
-                        </div>
-                        <div class="col-auto"><i class="bi bi-calendar-week fs-2 text-gray-300"></i></div>
+                    <div class="row align-items-center">
+                        <div class="col"><div class="kpi-label text-info">Eggs (7 Days)</div><div class="kpi-value">{{ stats.eggs_last_7_days }}</div></div>
+                        <div class="col-auto kpi-icon"><i class="bi bi-calendar-week"></i></div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-warning shadow h-100 py-2">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
                 <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Avg. Daily Production</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ '{:,.1%}'.format(stats.avg_production_rate) if stats.avg_production_rate is not none else 'N/A' }}</div>
-                        </div>
-                        <div class="col-auto"><i class="bi bi-graph-up fs-2 text-gray-300"></i></div>
+                    <div class="row align-items-center">
+                        <div class="col"><div class="kpi-label text-warning">Avg. Production</div><div class="kpi-value">{{ '{:,.1%}'.format(stats.avg_production_rate) if stats.avg_production_rate is not none else 'N/A' }}</div></div>
+                        <div class="col-auto kpi-icon"><i class="bi bi-graph-up"></i></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    
-    <!-- Main Content Row -->
-    <div class="row">
-        <!-- Left Column: Flocks -->
-        <div class="col-lg-8">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Active Flocks Overview</h6></div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Flock Name</th>
-                                    <th>Breed</th>
-                                    <th class="text-center">Bird Count</th>
-                                    <th>Acquired</th>
-                                    <th class="text-center">Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for flock in active_flocks %}
-                                <tr>
-                                    <td><strong>{{ flock.flock_name }}</strong></td>
-                                    <td>{{ flock.breed }}</td>
-                                    <td class="text-center">{{ flock.bird_count }}</td>
-                                    <td>{{ flock.acquisition_date }}</td>
-                                    <td class="text-center"><span class="badge bg-success">{{ flock.status }}</span></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#deactivateFlockModal" data-flock-id="{{ flock.id }}" data-flock-name="{{ flock.flock_name }}">
-                                            Deactivate/Sell
-                                        </button>
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr><td colspan="6" class="text-center text-muted">No active flocks found.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
 
-            <div class="card shadow mb-4">
-                <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Inactive/Sold Flocks (Profitability)</h6></div>
-                <div class="card-body">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Flock Name</th>
-                                <th class="text-end">Final Sale Price</th>
-                                <th class="text-end">Total Feed Cost</th>
-                                <th class="text-end">Net Profit/Loss</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for flock in inactive_flocks %}
-                            <tr class="{{ 'table-success' if flock.net_profit > 0 else 'table-danger' }}">
-                                <td>{{ flock.flock_name }}</td>
-                                <td class="text-end">₦{{ '{:,.2f}'.format(flock.final_sale_price) }}</td>
-                                <td class="text-end">₦{{ '{:,.2f}'.format(flock.total_cost) }}</td>
-                                <td class="text-end"><strong>₦{{ '{:,.2f}'.format(flock.net_profit) }}</strong></td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="4" class="text-center text-muted">No inactive flocks found.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Right Column: Egg Logging -->
-        <div class="col-lg-4">
-            <div class="card shadow mb-4" id="egg-log-form">
-                <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Log Daily Egg Collection</h6></div>
-                <div class="card-body">
-                    <form action="/poultry/eggs/log" method="POST">
-                        <div class="mb-3">
-                            <label for="log_date" class="form-label">Date</label>
-                            <input type="date" class="form-control" id="log_date" name="log_date" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="flock_id" class="form-label">Select Flock</label>
-                            <select class="form-select" id="flock_id" name="flock_id" required>
-                                <option selected disabled value="">Choose a flock...</option>
-                                {% for flock in active_flocks %}<option value="{{ flock.id }}">{{ flock.flock_name }}</option>{% endfor %}
-                            </select>
-                        </div>
-                        <div class="row">
-                            <div class="col-6 mb-3">
-                                <label for="crates" class="form-label">Crates</label>
-                                <input type="number" class="form-control" id="crates" name="crates" min="0" value="0">
-                            </div>
-                            <div class="col-6 mb-3">
-                                <label for="pieces" class="form-label">Pieces</label>
-                                <input type="number" class="form-control" id="pieces" name="pieces" min="0" max="29" value="0">
-                            </div>
-                        </div>
-                        <div class="d-grid"><button type="submit" class="btn btn-success">Log Eggs</button></div>
-                    </form>
-                </div>
-            </div>
-            
-            <div class="card shadow mb-4">
-                <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Recent Log History</h6></div>
-                <div class="card-body" style="max-height: 300px; overflow-y: auto;">
-                    <table class="table table-sm table-striped">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Flock</th>
-                                <th class="text-center">Crates</th>
-                                <th class="text-center">Pieces</th>
-                                <th class="text-end">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for log in egg_logs %}
-                            <tr>
-                                <td>{{ log.log_date }}</td>
-                                <td>{{ log.flock_name }}</td>
-                                <td class="text-center">{{ log.crates }}</td>
-                                <td class="text-center">{{ log.pieces }}</td>
-                                <td class="text-end"><strong>{{ log.quantity }}</strong></td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="5" class="text-center text-muted">No recent logs.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+    <!-- Active Flocks Table -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light"><h5 class="mb-0">Active Flocks</h5></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Flock Name</th><th>Breed</th>
+                            <th class="text-center">Bird Count</th><th>Acquired</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for flock in active_flocks %}
+                        <tr>
+                            <td><strong>{{ flock.flock_name }}</strong></td>
+                            <td>{{ flock.breed }}</td>
+                            <td class="text-center">{{ flock.bird_count }}</td>
+                            <td>{{ flock.acquisition_date }}</td>
+                            <td class="text-center">
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#logFeedModal" data-flock-id="{{ flock.id }}" data-flock-name="{{ flock.flock_name }}">Log Feed</button>
+                                    <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#logFlockMortalityModal" data-flock-id="{{ flock.id }}" data-flock-name="{{ flock.flock_name }}">Log Mortality</button>
+                                    <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deactivateFlockModal" data-flock-id="{{ flock.id }}" data-flock-name="{{ flock.flock_name }}">Deactivate</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center p-4 text-muted">No active flocks found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
-    
+
+    <!-- Inactive/Sold Flocks Table -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-light"><h5 class="mb-0">Inactive/Sold Flocks (Profitability)</h5></div>
+        <div class="card-body">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Flock Name</th><th class="text-end">Final Sale Price</th><th class="text-end">Total Feed Cost</th><th class="text-end">Net Profit/Loss</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for flock in inactive_flocks %}
+                    <tr class="{{ 'table-success' if flock.net_profit > 0 else 'table-danger' }}">
+                        <td>{{ flock.flock_name }}</td>
+                        <td class="text-end">₦{{ '{:,.2f}'.format(flock.final_sale_price) }}</td>
+                        <td class="text-end">₦{{ '{:,.2f}'.format(flock.total_cost) }}</td>
+                        <td class="text-end"><strong>₦{{ '{:,.2f}'.format(flock.net_profit) }}</strong></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center p-4 text-muted">No inactive flocks found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+                            
+    <!-- ====================================================== -->
     <!-- MODALS -->
-    <!-- Add New Flock Modal (Your Original Modal - Unchanged) -->
-    <div class="modal fade" id="addFlockModal" tabindex="-1" aria-labelledby="addFlockModalLabel" aria-hidden="true">
+    <!-- ====================================================== -->
+
+    <!-- Add New Flock Modal -->
+    <div class="modal fade" id="addFlockModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title" id="addFlockModalLabel">Add New Flock</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-header"><h5 class="modal-title">Add New Flock</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <form action="{{ url_for('add_flock_post') }}" method="POST">
                         <div class="mb-3"><label class="form-label">Flock Name</label><input type="text" class="form-control" name="flock_name" required></div>
                         <div class="mb-3"><label class="form-label">Breed</label><input type="text" class="form-control" name="breed" required></div>
-                        <div class="mb-3"><label class="form-label">Acquisition Date</label><input type="date" class="form-control" name="acquisition_date" required></div>
+                        <div class="mb-3"><label class="form-label">Acquisition Date</label><input type="date" class="form-control" name="acquisition_date" id="acquisition_date" required></div>
                         <div class="mb-3"><label class="form-label">Bird Count</label><input type="number" class="form-control" name="bird_count" required></div>
-                        <div class="mb-3"><label class="form-label">Status</label><select class="form-select" name="status" required><option value="Active" selected>Active</option><option value="Sold">Sold</option><option value="Archived">Archived</option></select></div>
+                        <div class="mb-3"><label class="form-label">Status</label><select class="form-select" name="status" required><option value="Active" selected>Active</option></select></div>
                         <hr><button type="submit" class="btn btn-primary">Save Flock</button>
                     </form>
                 </div>
             </div>
         </div>
     </div>
-    <!-- NEW: Log Feed Usage Modal -->
+    
+    <!-- Log Egg Collection Modal -->
+    <div class="modal fade" id="logEggModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form action="{{ url_for('add_egg_log') }}" method="POST">
+                    <div class="modal-header"><h5 class="modal-title">Log Daily Egg Collection</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                    <div class="modal-body">
+                        <div class="mb-3"><label class="form-label">Date</label><input type="date" class="form-control" name="log_date" id="egg_log_date" required></div>
+                        <div class="mb-3">
+                            <label class="form-label">Select Flock</label>
+                            <select class="form-select" name="flock_id" required>
+                                <option value="" disabled selected>-- Choose a flock --</option>
+                                {% for flock in active_flocks %}<option value="{{ flock.id }}">{{ flock.flock_name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3"><label class="form-label">Crates</label><input type="number" class="form-control" name="crates" value="0" min="0"></div>
+                            <div class="col-6 mb-3"><label class="form-label">Pieces</label><input type="number" class="form-control" name="pieces" max="29" value="0" min="0"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-success">Log Eggs</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Feed Usage Modal -->
     <div class="modal fade" id="logFeedModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <form action="{{ url_for('log_inventory_usage') }}" method="POST">
-                    <div class="modal-header"><h5 class="modal-title">Log Feed Usage</h5>...</div>
+                    <div class="modal-header"><h5 class="modal-title">Log Feed for: <span id="feedFlockName" class="text-primary"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                     <div class="modal-body">
+                        <input type="hidden" name="flock_id" id="feedFlockId">
                         <input type="hidden" name="log_date" value="{{ today_date }}">
                         <div class="mb-3">
-                            <label for="flock_id" class="form-label">For Flock:</label>
-                            <select class="form-select" name="flock_id" required>
-                                {% for flock in active_flocks %}<option value="{{ flock.id }}">{{ flock.flock_name }}</option>{% endfor %}
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label for="inventory_item_id" class="form-label">Feed Item:</label>
+                            <label class="form-label">Feed Item</label>
                             <select class="form-select" name="inventory_item_id" required>
+                                <option value="" disabled selected>-- Select feed --</option>
                                 {% for item in feed_items %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}
                             </select>
                         </div>
-                        <div class="mb-3">
-                            <label for="quantity_used" class="form-label">Quantity Used:</label>
-                            <input type="number" step="any" class="form-control" name="quantity_used" required>
-                        </div>
+                        <div class="mb-3"><label class="form-label">Quantity Used</label><input type="number" step="any" class="form-control" name="quantity_used" required></div>
                     </div>
                    <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Log Usage</button>
+                    <button type="submit" class="btn btn-info">Log Usage</button>
                 </div>
                 </form>
             </div>
         </div>
     </div>
 
-    <!-- NEW: Deactivate Flock Modal -->
-<div class="modal fade" id="deactivateFlockModal" tabindex="-1" aria-labelledby="deactivateFlockModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form action="{{ url_for('deactivate_flock') }}" method="POST" onsubmit="return confirm('Are you sure you want to deactivate this flock? This action is final and will calculate its profit/loss.');">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="deactivateFlockModalLabel">Deactivate/Sell Flock</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
+    <!-- Log Flock Mortality Modal -->
+    <div class="modal fade" id="logFlockMortalityModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Log Mortality for: <span class="text-primary" id="mortalityFlockName"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
-                    <p>You are about to deactivate flock: <strong id="deactivateFlockName" class="text-primary"></strong>.</p>
-                    
-                    <!-- This hidden input holds the flock ID and is filled by JavaScript -->
-                    <input type="hidden" name="flock_id" id="deactivateFlockId">
-                    
-                    <div class="mb-3">
-                        <label for="final_sale_price" class="form-label">Final Sale Price for the entire flock:</label>
-                        <div class="input-group">
-                            <span class="input-group-text">₦</span>
-                            <input type="number" step="0.01" class="form-control" name="final_sale_price" id="final_sale_price" placeholder="e.g., 50000" required>
-                        </div>
-                    </div>
-                    
-                    <div class="alert alert-warning small">
-                        <i class="bi bi-exclamation-triangle-fill"></i> <strong>Important:</strong> This action is final. The system will calculate all feed costs associated with this flock to determine its profitability and then mark it as 'Inactive'.
-                    </div>
+                    <form action="{{ url_for('log_flock_mortality') }}" method="POST">
+                        <input type="hidden" name="flock_id" id="mortalityFlockId">
+                        <div class="mb-3"><label class="form-label">Date of Mortality</label><input type="date" class="form-control" name="log_date" value="{{ today_date }}" required></div>
+                        <div class="mb-3"><label class="form-label">Number of Mortalities</label><input type="number" class="form-control" name="mortality_count" min="1" required></div>
+                        <div class="alert alert-info small">The system will automatically calculate the financial value of this loss and post it as an expense.</div>
+                        <hr><button type="submit" class="btn btn-warning">Record Mortality</button>
+                    </form>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">Confirm and Deactivate Flock</button>
-                </div>
-            </form>
+            </div>
         </div>
     </div>
-</div>
 
+    <!-- Deactivate Flock Modal -->
+    <div class="modal fade" id="deactivateFlockModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form action="{{ url_for('deactivate_flock') }}" method="POST" onsubmit="return confirm('Are you sure? This action is final.');">
+                    <div class="modal-header"><h5 class="modal-title">Deactivate/Sell Flock: <span id="deactivateFlockName" class="text-primary"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                    <div class="modal-body">
+                        <input type="hidden" name="flock_id" id="deactivateFlockId">
+                        <div class="mb-3">
+                            <label class="form-label">Final Sale Price (for entire flock)</label>
+                            <div class="input-group"><span class="input-group-text">₦</span><input type="number" step="0.01" class="form-control" name="final_sale_price" required></div>
+                        </div>
+                        <div class="alert alert-warning small"><strong>Important:</strong> This action will calculate all feed costs and finalize the flock's profitability.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-danger">Confirm and Deactivate</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
-{% endblock %}
-
-
-{% block head_styles %}
-    <!-- Your Original Styles -->
-    <style>
-    .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
-    .border-left-success { border-left: 0.25rem solid #1cc88a !important; }
-    .border-left-info { border-left: 0.25rem solid #36b9cc !important; }
-    .border-left-warning { border-left: 0.25rem solid #f6c23e !important; }
-    .text-xs { font-size: .9rem; }
-    .text-gray-300 { color: #dddfeb !important; }
-    </style>
 {% endblock %}
 
 
 {% block scripts %}
-    {{ super() }} {# THIS IS THE MOST IMPORTANT LINE #}
-    
+    {{ super() }}
     <script>
-        // This single, safe block will run after the whole page is ready.
         document.addEventListener('DOMContentLoaded', function() {
+            // --- Generic script to pass flock data to modals ---
+            function setupModal(modalId, nameElementId, idInputElementId) {
+                const modal = document.getElementById(modalId);
+                if (modal) {
+                    modal.addEventListener('show.bs.modal', function (event) {
+                        const button = event.relatedTarget;
+                        const flockId = button.getAttribute('data-flock-id');
+                        const flockName = button.getAttribute('data-flock-name');
+                        
+                        const nameSpan = modal.querySelector(nameElementId);
+                        const idInput = modal.querySelector(idInputElementId);
+
+                        if (nameSpan) nameSpan.textContent = flockName;
+                        if (idInput) idInput.value = flockId;
+                    });
+                }
+            }
             
-            // --- Script for Deactivate Modal ---
-            const deactivateModal = document.getElementById('deactivateFlockModal');
-            if (deactivateModal) {
-                deactivateModal.addEventListener('show.bs.modal', function (event) {
-                    const button = event.relatedTarget;
-                    const flockId = button.getAttribute('data-flock-id');
-                    const flockName = button.getAttribute('data-flock-name');
-                    const modalBodyName = deactivateModal.querySelector('#deactivateFlockName');
-                    const modalInputId = deactivateModal.querySelector('#deactivateFlockId');
-                    modalBodyName.textContent = flockName;
-                    modalInputId.value = flockId;
-                });
-            }
+            // --- Initialize all modals that need flock data ---
+            setupModal('logFeedModal', '#feedFlockName', '#feedFlockId');
+            setupModal('logFlockMortalityModal', '#mortalityFlockName', '#mortalityFlockId');
+            setupModal('deactivateFlockModal', '#deactivateFlockName', '#deactivateFlockId');
 
-            // --- Script to set default dates ---
-            const logDateInput = document.getElementById('log_date');
-            if (logDateInput) {
-                logDateInput.valueAsDate = new Date();
-            }
+            // --- Set default dates in modals ---
+            const today = new Date().toISOString().split('T')[0];
+            
+            const eggLogDate = document.getElementById('egg_log_date');
+            if (eggLogDate) eggLogDate.value = today;
 
-            const acquisitionDateInput = document.querySelector('#addFlockModal input[name="acquisition_date"]');
-            if (acquisitionDateInput) {
-                acquisitionDateInput.valueAsDate = new Date();
-            }
+            const acquisitionDate = document.querySelector('#addFlockModal input[name="acquisition_date"]');
+            if (acquisitionDate) acquisitionDate.value = today;
+            
+            // Note: the mortality and feed usage modals get the date via a hidden input,
+            // which is already set to `today_date` from the backend.
         });
     </script>
 {% endblock %}

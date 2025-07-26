@@ -1,18 +1,4 @@
-# Virtual Environment
-venv/
 .venv/
-env/
-*.env
-
-# Python cache
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-
-# SQLite Database
-# You might want to track this in the beginning, but it's good practice to ignore
-# instance/
-# *.sqlite3
-farm_data.db
-```4.  Save and close the `.gitignore` file.
+farm_data_backup_before_reset.db

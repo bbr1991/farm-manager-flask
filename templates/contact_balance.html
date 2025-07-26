@@ -5,7 +5,6 @@
 {% block content %}
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Debtor & Creditor Balances</h2>
-        <!-- CORRECTION 1: Point "New Transaction" to the correct page -->
         <a href="{{ url_for('customer_transaction') }}" class="btn btn-success">
             <i class="bi bi-plus-circle-fill me-2"></i>New Customer Transaction
         </a>
@@ -27,7 +26,6 @@
                             <tr>
                                 <td>{{ d.name }}<br><small class="text-muted">{{ d.phone or '' }}</small></td>
                                 <td class="text-end text-danger"><strong>₦{{ '{:,.2f}'.format(d.balance) }}</strong></td>
-                                <!-- CORRECTION 2: Point "View" to the correct ledger route -->
                                 <td><a href="{{ url_for('contact_ledger', contact_id=d.id) }}" class="btn btn-sm btn-outline-primary">View Ledger</a></td>
                             </tr>
                             {% else %}
@@ -53,7 +51,6 @@
                             <tr>
                                 <td>{{ c.name }}<br><small class="text-muted">{{ c.phone or '' }}</small></td>
                                 <td class="text-end text-success"><strong>₦{{ '{:,.2f}'.format(c.balance * -1) }}</strong></td>
-                                <!-- CORRECTION 2: Point "View" to the correct ledger route -->
                                 <td><a href="{{ url_for('contact_ledger', contact_id=c.id) }}" class="btn btn-sm btn-outline-primary">View Ledger</a></td>
                             </tr>
                             {% else %}

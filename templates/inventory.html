@@ -1,71 +1,126 @@
 {% extends "base.html" %}
 {% block title %}Inventory Management{% endblock %}
 
+{% block head_styles %}
+    <style>
+        .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
+        .border-left-warning { border-left: 0.25rem solid #f6c23e !important; }
+        .border-left-danger { border-left: 0.25rem solid #e74a3b !important; }
+        .text-xs { font-size: .9rem; }
+        .text-gray-300 { color: #dddfeb !important; }
+        .text-gray-800 { color: #5a5c69 !important; }
+    </style>
+{% endblock %}
+
 {% block content %}
     <!-- Page Header -->
-    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">Inventory Management</h1>
-        <div class="btn-toolbar mb-2 mb-md-0">
-            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addItemModal"><i class="bi bi-plus-circle-fill"></i> Add New Item Type</button>
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="bi bi-boxes me-2"></i>Inventory Management</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <!-- The only global action is creating a new item -->
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addItemModal">
+            <i class="bi bi-plus-circle-fill"></i> Add New Item
+        </button>
+    </div>
+</div>
+    <!-- KPI Cards -->
+    <div class="row">
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Inventory Value</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.total_value) }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-stack fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Items Low on Stock</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.low_stock_count }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-exclamation-triangle-fill fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Items Expiring Soon</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.expiring_soon_count }}</div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-calendar-x fs-2 text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- KPI Cards (Unchanged) -->
-    <div class="row">
-        <div class="col-xl-4 col-md-6 mb-4"><div class="card border-left-primary shadow h-100 py-2"><div class="card-body"><div class="row no-gutters align-items-center"><div class="col mr-2"><div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Inventory Value</div><div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ '{:,.2f}'.format(stats.total_value) }}</div></div><div class="col-auto"><i class="bi bi-stack fs-2 text-gray-300"></i></div></div></div></div></div>
-        <div class="col-xl-4 col-md-6 mb-4"><div class="card border-left-warning shadow h-100 py-2"><div class="card-body"><div class="row no-gutters align-items-center"><div class="col mr-2"><div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Items Low on Stock</div><div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.low_stock_count }}</div></div><div class="col-auto"><i class="bi bi-exclamation-triangle-fill fs-2 text-gray-300"></i></div></div></div></div></div>
-        <div class="col-xl-4 col-md-6 mb-4"><div class="card border-left-danger shadow h-100 py-2"><div class="card-body"><div class="row no-gutters align-items-center"><div class="col mr-2"><div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Items Expiring Soon</div><div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.expiring_soon_count }}</div></div><div class="col-auto"><i class="bi bi-calendar-x fs-2 text-gray-300"></i></div></div></div></div></div>
-    </div>
-
-    <!-- Current Inventory Table (with Edit and Delete buttons) -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Current Inventory Status</h6></div>
+    <!-- Inventory List Table -->
+    <div class="card shadow-sm mt-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">Current Inventory</h5>
+        </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
                         <tr>
-                            <th>Name</th><th>Category</th><th class="text-center">Current Stock</th><th>Expiry Date</th><th>Actions</th>
+                            <th>Item Name</th>
+                            <th>Category</th>
+                            <th class="text-end">Quantity on Hand</th>
+                            <th class="text-end">Unit Cost</th>
+                            <th class="text-end">Sale Price</th>
+                            <th class="text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in inventory_list %}
-                        <tr class="{% if item.is_low_stock %}table-warning{% elif item.is_expiring_soon %}table-danger{% endif %}">
-                            <td><strong>{{ item.name }}</strong>{% if item.is_low_stock %}<span class="badge bg-warning ms-2">Low Stock</span>{% endif %}{% if item.is_expiring_soon %}<span class="badge bg-danger ms-2">Expiring</span>{% endif %}</td>
+                        <tr class="{{ 'table-warning' if item.is_low_stock else 'table-danger' if item.is_expiring_soon }}">
+                            <td><strong>{{ item.name }}</strong></td>
                             <td>{{ item.category }}</td>
+                            <td class="text-end">{{ item.quantity }} {{ item.unit }}</td>
+                            <td class="text-end">₦{{ '{:,.2f}'.format(item.unit_cost or 0) }}</td>
+                            <td class="text-end">₦{{ '{:,.2f}'.format(item.sale_price or 0) }}</td>
                             <td class="text-center">
-                                {% if item.name == 'Eggs' %}{% set crates = (item.quantity // 30) %}{% set pieces = (item.quantity % 30) %}<strong>{{ crates }}</strong> cr, <strong>{{ pieces }}</strong> pcs<br><small class="text-muted">({{ item.quantity }} total)</small>{% else %}{{ item.quantity }} {{ item.unit }}{% endif %}
-                            </td>
-                            <td>{{ item.expiry_date if item.expiry_date else 'N/A' }}</td>
-                            <td>
-                                <div class="btn-group">
-                                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addStockModal" data-bs-item-id="{{ item.id }}" data-bs-item-name="{{ item.name }}"><i class="bi bi-plus-lg"></i></button>
-                                    
-                                    <!-- EDIT BUTTON (This now works!) -->
-                                    <button type="button" class="btn btn-sm btn-info" title="Edit Item"
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#editInventoryModal"
-                                        data-bs-id="{{ item.id }}"
-                                        data-bs-name="{{ item.name }}"
-                                        data-bs-category="{{ item.category }}"
-                                        data-bs-quantity="{{ item.quantity }}"
-                                        data-bs-unit="{{ item.unit }}"
-                                        data-bs-low-stock="{{ item.low_stock_threshold }}"
-                                        data-bs-unit-cost="{{ item.unit_cost }}"
-                                        data-bs-sale-price="{{ item.sale_price }}"
-                                        data-bs-expiry="{{ item.expiry_date or '' }}">
-                                        <i class="bi bi-pencil-fill"></i>
-                                    </button>
-
-                                    <!-- DELETE BUTTON (New!) -->
-                                    <form action="{{ url_for('delete_inventory_item', item_id=item.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to permanently delete {{ item.name }}? This action cannot be undone.');" style="display: inline;">
-                                        <button type="submit" class="btn btn-sm btn-danger" title="Delete Item"><i class="bi bi-trash-fill"></i></button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
+                                <div class="btn-group btn-group-sm">
+        <button class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#addStockModal"
+                data-bs-item-id="{{ item.id }}" data-bs-item-name="{{ item.name }}">
+            <i class="bi bi-plus-lg"></i> Stock
+        </button>
+        <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#logUsageModal"
+                data-bs-item-id="{{ item.id }}" data-bs-item-name="{{ item.name }}">
+            <i class="bi bi-clipboard-minus"></i> Usage
+        </button>
+        <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editItemModal"
+                data-bs-id="{{ item.id }}"
+                data-bs-name="{{ item.name }}"
+                data-bs-category="{{ item.category }}"
+                data-bs-unit="{{ item.unit }}"
+                data-bs-low-stock="{{ item.low_stock_threshold or 0 }}"
+                data-bs-unit-cost="{{ item.unit_cost or 0 }}"
+                data-bs-sale-price="{{ item.sale_price or 0 }}"
+                data-bs-expiry="{{ item.expiry_date or '' }}">
+            <i class="bi bi-pencil-fill"></i> Edit
+        </button>
+        <button class="btn btn-outline-danger" onclick="document.getElementById('delete-item-form-{{ item.id }}').submit();">
+            <i class="bi bi-trash-fill"></i> Delete
+        </button>
+    </div>
+    <form id="delete-item-form-{{ item.id }}" action="{{ url_for('delete_inventory_item', item_id=item.id) }}" method="POST" class="d-none" onsubmit="return confirm('Are you sure?');"></form>
+</td>
                         {% else %}
-                        <tr><td colspan="5" class="text-center text-muted">No inventory items found. Add one to get started.</td></tr>
+                        <tr><td colspan="6" class="text-center p-4 text-muted">No items in inventory.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -73,117 +128,256 @@
         </div>
     </div>
 
-    <!-- =================================================================== -->
-    <!--                                 MODALS                                -->
-    <!-- =================================================================== -->
+    <!-- MODALS -->
+<!-- Add Stock Modal -->
+<div class="modal fade" id="addStockModal" tabindex="-1" aria-labelledby="addStockModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addStockModalLabel">Add Stock for: <span id="addStockItemName" class="text-primary"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('add_inventory_stock') }}" method="POST">
+                    <input type="hidden" name="inventory_item_id" id="addStockItemId">
+                    <div class="mb-3">
+                        <label for="quantity_added" class="form-label">Quantity to Add</label>
+                        <input type="number" class="form-control" name="quantity_added" step="any" required>
+                    </div>
+                    <hr>
+                    <button type="submit" class="btn btn-success">Add to Stock</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Log Usage Modal -->
+<div class="modal fade" id="logUsageModal" tabindex="-1" aria-labelledby="logUsageModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="logUsageModalLabel">Log Usage for: <span id="logUsageItemName" class="text-primary"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('log_inventory_usage') }}" method="POST">
+                    <input type="hidden" name="inventory_item_id" id="logUsageItemId">
+                    <input type="hidden" name="log_date" value="{{ today_date }}">
+                    <div class="mb-3">
+                        <label for="quantity_used" class="form-label">Quantity Used</label>
+                        <input type="number" class="form-control" name="quantity_used" step="any" required>
+                    </div>
+                    <hr>
+                    <button type="submit" class="btn btn-info">Log Usage</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+    <!-- Add Stock Modal -->
+    <div class="modal fade" id="addStockModal" tabindex="-1"> ... (Your Add Stock Modal code goes here) ... </div>
 
-    <!-- 1. Add New Item Type Modal (Unchanged) -->
-    <div class="modal fade" id="addItemModal" tabindex="-1">...</div>
+    <!-- Log Usage Modal -->
+<div class="modal fade" id="logUsageModal" tabindex="-1" aria-labelledby="logUsageModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="logUsageModalLabel">Log Usage for: <span id="logUsageItemName" class="text-primary"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('log_inventory_usage') }}" method="POST">
+                    <!-- The existing hidden input for the item ID -->
+                    <input type="hidden" name="inventory_item_id" id="logUsageItemId">
+                    
+                    <!-- ====================================================== -->
+                    <!-- THIS IS THE NEW, MISSING HIDDEN INPUT FOR THE DATE -->
+                    <!-- ====================================================== -->
+                    <input type="hidden" name="log_date" value="{{ today_date }}">
 
-    <!-- 2. Add Stock Modal (Unchanged) -->
-    <div class="modal fade" id="addStockModal" tabindex="-1">...</div>
-
-    <!-- 3. Log Usage Modal (Unchanged) -->
-    <div class="modal fade" id="logUsageModal" tabindex="-1">...</div>
-    
-    <!-- 4. NEW: Edit Inventory Item Modal -->
-    <div class="modal fade" id="editInventoryModal" tabindex="-1" aria-labelledby="editInventoryModalLabel" aria-hidden="true">
+                    <div class="mb-3">
+                        <label for="quantity_used" class="form-label">Quantity Used</label>
+                        <input type="number" class="form-control" name="quantity_used" step="any" required>
+                    </div>
+                    <hr>
+                    <button type="submit" class="btn btn-info">Log Usage</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+    <!-- EDIT INVENTORY ITEM MODAL (This is a key part) -->
+    <div class="modal fade" id="editItemModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="editInventoryModalLabel">Edit Item: <span id="editItemNameDisplay" class="text-primary"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title">Edit Inventory Item</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <form action="{{ url_for('update_inventory_item') }}" method="POST">
-                        <!-- Hidden input to store the item's ID -->
-                        <input type="hidden" name="item_id" id="edit_item_id">
-                        
-                        <div class="row g-3">
-                            <div class="col-md-6"><label class="form-label">Item Name</label><input type="text" class="form-control" name="name" id="edit_item_name" required></div>
-                            <div class="col-md-6"><label class="form-label">Category</label>
-                                <select class="form-select" name="category" id="edit_item_category" required>
-                                    <option>Feed</option><option>Medicine</option><option>Equipment</option><option>Produce</option><option>Other</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4"><label class="form-label">Current Quantity</label><input type="number" class="form-control" name="quantity" id="edit_item_quantity" step="any" required></div>
-                            <div class="col-md-4"><label class="form-label">Unit</label><input type="text" class="form-control" name="unit" id="edit_item_unit" required></div>
-                            <div class="col-md-4"><label class="form-label">Low Stock Alert</label><input type="number" class="form-control" name="low_stock_threshold" id="edit_item_low_stock" step="any" required></div>
-                            <div class="col-md-6"><label class="form-label">Purchase Cost/Unit (₦)</label><input type="number" class="form-control" name="unit_cost" id="edit_item_unit_cost" step="0.01"></div>
-                            <div class="col-md-6"><label class="form-label">Sale Price/Unit (₦)</label><input type="number" class="form-control" name="sale_price" id="edit_item_sale_price" step="0.01"></div>
-                            <div class="col-12"><label class="form-label">Expiry Date</label><input type="date" class="form-control" name="expiry_date" id="edit_item_expiry"></div>
+                    <form id="editItemForm" method="POST" action="">
+                        <div class="row">
+                            <div class="col-md-8 mb-3"><label class="form-label">Item Name</label><input type="text" class="form-control" name="name" required></div>
+                            <div class="col-md-4 mb-3"><label class="form-label">Category</label><input type="text" class="form-control" name="category" required></div>
                         </div>
-                        <hr class="my-4">
-                        <button class="btn btn-primary" type="submit">Save Changes</button>
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label class="form-label">Unit of Measure</label><input type="text" class="form-control" name="unit" required></div>
+                            <div class="col-md-6 mb-3"><label class="form-label">Low Stock Threshold</label><input type="number" step="any" class="form-control" name="low_stock_threshold"></div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3"><label class="form-label">Unit Cost (₦)</label><input type="number" step="0.01" class="form-control" name="unit_cost"></div>
+                            <div class="col-md-4 mb-3"><label class="form-label">Sale Price (₦)</label><input type="number" step="0.01" class="form-control" name="sale_price"></div>
+                            <div class="col-md-4 mb-3"><label class="form-label">Expiry Date</label><input type="date" class="form-control" name="expiry_date"></div>
+                        </div>
+                        <hr>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
                     </form>
                 </div>
             </div>
         </div>
     </div>
-{% endblock %}
-
-
-{% block head_styles %}
-{{ super() }}
-<style>
-    .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
-    .border-left-warning { border-left: 0.25rem solid #f6c23e !important; }
-    .border-left-danger { border-left: 0.25rem solid #e74a3b !important; }
-    .text-xs { font-size: .9rem; }
-    .text-gray-300 { color: #dddfeb !important; }
-</style>
+    <!-- Add New Item Modal -->
+<div class="modal fade" id="addItemModal" tabindex="-1" aria-labelledby="addItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addItemModalLabel">Add New Inventory Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('add_inventory_item') }}" method="POST">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="name" class="form-label">Item Name</label>
+                            <input type="text" class="form-control" name="name" placeholder="e.g., Broiler Finisher Mash" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="category" class="form-label">Category</label>
+                            <select class="form-select" name="category" required>
+                                <option selected disabled value="">-- Choose a category --</option>
+                                <option value="Feed">Feed</option>
+                                <option value="Medication">Medication</option>
+                                <option value="Water Production">Water Production</option>
+                                <option value="Equipment">Equipment</option>
+                                <option value="Produce">Produce</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="quantity" class="form-label">Initial Quantity</label>
+                            <input type="number" class="form-control" name="quantity" value="0" step="any" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="unit" class="form-label">Unit of Measure</label>
+                            <input type="text" class="form-control" name="unit" placeholder="e.g., kg, bags, litres" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="low_stock_threshold" class="form-label">Low Stock Alert Level</label>
+                            <input type="number" class="form-control" name="low_stock_threshold" value="10" step="any">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="unit_cost" class="form-label">Purchase Cost/Unit (₦)</label>
+                            <input type="number" class="form-control" name="unit_cost" value="0" step="0.01">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="sale_price" class="form-label">Sale Price/Unit (₦)</label>
+                            <input type="number" class="form-control" name="sale_price" value="0" step="0.01">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="expiry_date" class="form-label">Expiry Date (Optional)</label>
+                            <input type="date" class="form-control" name="expiry_date">
+                        </div>
+                    </div>
+                    <hr class="my-4">
+                    <div class="d-grid">
+                        <button class="btn btn-primary" type="submit">Save New Item</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 
 {% block scripts %}
-{{ super() }}
-<!-- All your existing scripts + the new one for the Edit Modal -->
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    // Your existing scripts for Add Stock, Log Usage, etc. can remain here.
+    {{ super() }}
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+    // --- Set default dates for date inputs ---
+    const today = new Date().toISOString().split('T')[0];
+    document.querySelectorAll('input[type="date"]').forEach(input => {
+        if (!input.value) { input.value = today; }
+    });
 
-    // NEW & IMPORTANT: Script to populate the Edit Modal
-    const editModal = document.getElementById('editInventoryModal');
-    if (editModal) {
-        editModal.addEventListener('show.bs.modal', function (event) {
-            // Button that triggered the modal
+    // ===================================================================
+    // LOGIC FOR THE "ADD STOCK" MODAL
+    // ===================================================================
+    const addStockModal = document.getElementById('addStockModal');
+    if (addStockModal) {
+        addStockModal.addEventListener('show.bs.modal', function (event) {
             const button = event.relatedTarget;
+            const itemId = button.getAttribute('data-bs-item-id');
+            const itemName = button.getAttribute('data-bs-item-name');
+            
+            const modalTitle = addStockModal.querySelector('#addStockItemName');
+            const modalInput = addStockModal.querySelector('#addStockItemId');
+            
+            // This prevents errors if the elements are not found
+            if (modalTitle) modalTitle.textContent = itemName;
+            if (modalInput) modalInput.value = itemId;
+        });
+    }
 
-            // Extract info from data-bs-* attributes
-            const id = button.getAttribute('data-bs-id');
+    // ===================================================================
+    // LOGIC FOR THE "LOG USAGE" MODAL
+    // ===================================================================
+    const logUsageModal = document.getElementById('logUsageModal');
+    if (logUsageModal) {
+        logUsageModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const itemId = button.getAttribute('data-bs-item-id');
+            const itemName = button.getAttribute('data-bs-item-name');
+            
+            const modalTitle = logUsageModal.querySelector('#logUsageItemName');
+            const modalInput = logUsageModal.querySelector('#logUsageItemId');
+
+            if (modalTitle) modalTitle.textContent = itemName;
+            if (modalInput) modalInput.value = itemId;
+        });
+    }
+
+    // ===================================================================
+    // LOGIC FOR THE "EDIT" MODAL
+    // ===================================================================
+    const editItemModal = document.getElementById('editItemModal');
+    if (editItemModal) {
+        editItemModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const itemId = button.getAttribute('data-bs-id');
+            
             const name = button.getAttribute('data-bs-name');
             const category = button.getAttribute('data-bs-category');
-            const quantity = button.getAttribute('data-bs-quantity');
             const unit = button.getAttribute('data-bs-unit');
             const lowStock = button.getAttribute('data-bs-low-stock');
             const unitCost = button.getAttribute('data-bs-unit-cost');
             const salePrice = button.getAttribute('data-bs-sale-price');
             const expiry = button.getAttribute('data-bs-expiry');
 
-            // Update the modal's content
-            const modalTitle = editModal.querySelector('#editItemNameDisplay');
-            const modalIdInput = editModal.querySelector('#edit_item_id');
-            const modalNameInput = editModal.querySelector('#edit_item_name');
-            const modalCategoryInput = editModal.querySelector('#edit_item_category');
-            const modalQuantityInput = editModal.querySelector('#edit_item_quantity');
-            const modalUnitInput = editModal.querySelector('#edit_item_unit');
-            const modalLowStockInput = editModal.querySelector('#edit_item_low_stock');
-            const modalUnitCostInput = editModal.querySelector('#edit_item_unit_cost');
-            const modalSalePriceInput = editModal.querySelector('#edit_item_sale_price');
-            const modalExpiryInput = editModal.querySelector('#edit_item_expiry');
+            const modalForm = editItemModal.querySelector('#editItemForm');
+            
+            modalForm.action = `/inventory/item/update/${itemId}`;
 
-            modalTitle.textContent = name;
-            modalIdInput.value = id;
-            modalNameInput.value = name;
-            modalCategoryInput.value = category;
-            modalQuantityInput.value = quantity;
-            modalUnitInput.value = unit;
-            modalLowStockInput.value = lowStock;
-            modalUnitCostInput.value = unitCost;
-            modalSalePriceInput.value = salePrice;
-            modalExpiryInput.value = expiry;
+            modalForm.querySelector('input[name="name"]').value = name;
+            modalForm.querySelector('input[name="category"]').value = category;
+            modalForm.querySelector('input[name="unit"]').value = unit;
+            modalForm.querySelector('input[name="low_stock_threshold"]').value = lowStock;
+            modalForm.querySelector('input[name="unit_cost"]').value = unitCost;
+            modalForm.querySelector('input[name="sale_price"]').value = salePrice;
+            modalForm.querySelector('input[name="expiry_date"]').value = expiry;
         });
     }
 });
-</script>
+
+    </script>
 {% endblock %}
