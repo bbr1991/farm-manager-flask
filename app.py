@@ -620,34 +620,11 @@ def inventory_dashboard():
 @permission_required('view_poultry')
 def poultry_dashboard():
     db = get_db()
-    today_str = date.today().strftime('%Y-%m-%d')
-    seven_days_ago_str = (date.today() - timedelta(days=6)).strftime('%Y-%m-%d')
-
-    # === NEW, MORE ROBUST STATS QUERY ===
-    # This query is reliable because we pass the dates in directly.
-    poultry_stats_row = db.execute("""
-        SELECT 
-            (SELECT COALESCE(SUM(bird_count), 0) FROM poultry_flocks WHERE status = 'Active') as total_active_birds,
-            (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date = ?) as eggs_today,
-            (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date >= ?) as eggs_last_7_days
-    """, (today_str, seven_days_ago_str)).fetchone()
-
-    # Fetch active flocks
-    active_flocks = db.execute("SELECT * FROM poultry_flocks WHERE status = 'Active' ORDER BY acquisition_date DESC").fetchall()
     
-    # Fetch egg logs, now including the crates and pieces columns for the log display
-    egg_logs = db.execute("""
-        SELECT el.log_date, el.quantity, el.crates, el.pieces, pf.flock_name 
-        FROM egg_log el 
-        JOIN poultry_flocks pf ON el.flock_id = pf.id 
-        ORDER BY el.log_date DESC, el.id DESC LIMIT 10
-    """).fetchall()
-    
-    # Safely get the stats values from the query result
-    total_active_birds = poultry_stats_row['total_active_birds'] if poultry_stats_row['total_active_birds'] is not None else 0
-    eggs_today = poultry_stats_row['eggs_today'] if poultry_stats_row['eggs_today'] is not None else 0
-    
-    # Build the stats dictionary for the KPI cards
+    # --- YOUR EXISTING STATS QUERIES (They are perfect) ---
+    poultry_stats_row = db.execute("SELECT (SELECT COALESCE(SUM(bird_count), 0) FROM poultry_flocks WHERE status = 'Active') as total_active_birds, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date = date('now', 'localtime')) as eggs_today, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date >= date('now', '-6 days')) as eggs_last_7_days").fetchone()
+    total_active_birds = poultry_stats_row['total_active_birds'] or 0
+    eggs_today = poultry_stats_row['eggs_today'] or 0
     stats = {
         'total_active_birds': total_active_birds,
         'eggs_today': eggs_today,
@@ -655,22 +632,29 @@ def poultry_dashboard():
         'avg_production_rate': (eggs_today / total_active_birds) if total_active_birds > 0 else 0
     }
 
-    # Fetch feed items for the "Log Feed Usage" modal
-    feed_items = db.execute("SELECT * FROM inventory WHERE category = 'Feed' AND quantity > 0").fetchall()
-    
-    # Fetch inactive flocks for the profitability table
+    # --- YOUR EXISTING DATA QUERIES (Also perfect) ---
+    active_flocks = db.execute("SELECT * FROM poultry_flocks WHERE status = 'Active' ORDER BY acquisition_date DESC").fetchall()
     inactive_flocks = db.execute("SELECT * FROM poultry_flocks WHERE status = 'Inactive' ORDER BY acquisition_date DESC").fetchall()
+    egg_logs = db.execute("SELECT el.*, pf.flock_name FROM egg_log el JOIN poultry_flocks pf ON el.flock_id = pf.id ORDER BY el.log_date DESC, el.id DESC LIMIT 10").fetchall()
 
-    # Pass ALL the data to the template
+    # --- THIS IS THE CRITICAL FIX ---
+    # We must fetch the list of inventory items that are in the 'Feed' category
+    # and pass this list to the template for the modal's dropdown.
+    feed_items = db.execute(
+        "SELECT * FROM inventory WHERE category = 'Feed' AND quantity > 0 ORDER BY name ASC"
+    ).fetchall()
+    # --- END OF FIX ---
+
+    # This is the final, correct return statement that sends ALL necessary data
     return render_template(
         'poultry.html', 
         user=g.user, 
         stats=stats, 
         active_flocks=active_flocks, 
-        egg_logs=egg_logs,
-        feed_items=feed_items,
         inactive_flocks=inactive_flocks,
-        today_date=today_str
+        egg_logs=egg_logs,
+        feed_items=feed_items,  # <-- Passing the new list here
+        today_date=date.today().strftime('%Y-%m-%d')
     )
 @app.route('/water')
 @login_required
@@ -1888,64 +1872,92 @@ def log_inventory_usage():
 @app.route('/poultry/eggs/log', methods=['POST'])
 @login_required
 @permission_required('edit_poultry')
+@check_day_closed('log_date')
 def add_egg_log():
-    """Handles logging new egg collection by crates and pieces, and updates inventory."""
     db = get_db()
     try:
+        # --- Get Data From the Form ---
         log_date = request.form.get('log_date')
-        flock_id = request.form.get('flock_id')
-        
-        # Get crates and pieces, defaulting to 0 if the field is empty
+        flock_id = int(request.form.get('flock_id'))
+        feed_item_id = int(request.form.get('feed_item_id'))
+        feed_quantity_used = float(request.form.get('feed_quantity_used'))
+        value_per_crate = float(request.form.get('value_per_crate'))
         crates = int(request.form.get('crates', 0) or 0)
         pieces = int(request.form.get('pieces', 0) or 0)
+        spoiled_count = int(request.form.get('spoiled_count', 0) or 0)
 
-        # --- Validation ---
-        if not all([log_date, flock_id]):
-            flash('Invalid date or flock provided.', 'warning')
-            return redirect(url_for('poultry_dashboard'))
+        # --- Initial Validation ---
+        if not all([log_date, flock_id, feed_item_id, feed_quantity_used, value_per_crate]):
+            raise Exception("All fields are required. Please fill out the form completely.")
+
+        # --- Calculations ---
+        EGGS_PER_CRATE = 30
+        total_eggs_laid = (crates * EGGS_PER_CRATE) + pieces
+        good_eggs = total_eggs_laid - spoiled_count
         
-        flock_id = int(flock_id)
-
-        # --- Calculation ---
-        EGGS_PER_CRATE = 30  # Define your standard crate size here
-        total_quantity = (crates * EGGS_PER_CRATE) + pieces
-
-        if total_quantity <= 0:
-            flash('Total eggs must be greater than zero. Please enter a value for crates or pieces.', 'warning')
-            return redirect(url_for('poultry_dashboard'))
-
-        # Find the inventory item named 'Eggs'
-        egg_inventory_item = db.execute("SELECT id FROM inventory WHERE name = 'Eggs'").fetchone()
+        if good_eggs < 0:
+            raise Exception("Spoiled count cannot be greater than total eggs laid.")
+            
+        total_value_produced = (total_eggs_laid / EGGS_PER_CRATE) * value_per_crate
+        value_of_spoilage = (spoiled_count / EGGS_PER_CRATE) * value_per_crate
+        value_of_good_eggs = total_value_produced - value_of_spoilage
         
-        if not egg_inventory_item:
-            # If it doesn't exist, we can't update the stock
-            flash("CRITICAL: Inventory item 'Eggs' not found. Please create it in the Inventory module first.", "danger")
-            return redirect(url_for('poultry_dashboard'))
+        # --- Get Feed Cost ---
+        feed_item = db.execute("SELECT name, unit_cost, quantity FROM inventory WHERE id = ?", (feed_item_id,)).fetchone()
+        if not feed_item: raise Exception("Selected feed item not found in inventory.")
+        if feed_quantity_used > feed_item['quantity']:
+            raise Exception(f"Not enough {feed_item['name']} in stock. Only {feed_item['quantity']} available.")
+        total_feed_cost = feed_quantity_used * (feed_item['unit_cost'] or 0)
+        
+        net_profit = value_of_good_eggs - total_feed_cost
 
-        # --- Start a Database Transaction ---
-        # 1. Add the record to the egg_log table with all the new details
+        # --- Get Account IDs with Robust Checking ---
+        def get_account_id(name):
+            account = db.execute("SELECT id FROM accounts WHERE name = ?", (name,)).fetchone()
+            if not account:
+                raise Exception(f"CRITICAL SETUP ERROR: Account '{name}' not found in Chart of Accounts. Please create it.")
+            return account['id']
+
+        feed_inventory_acc_id = get_account_id('Inventory - Feed')
+        egg_inventory_acc_id = get_account_id('Inventory - Eggs')
+        wip_account_id = get_account_id('Eggs WIP')
+        spoilage_expense_acc_id = get_account_id('Egg Spoilage Expense')
+        
+        # --- DATABASE TRANSACTION ---
+        
+        # 1. Update the operational log
         db.execute("""
-            INSERT INTO egg_log (log_date, flock_id, crates, pieces, quantity) 
-            VALUES (?, ?, ?, ?, ?)
-        """, (log_date, flock_id, crates, pieces, total_quantity))
+            INSERT INTO egg_log (log_date, flock_id, crates, pieces, quantity, spoiled_count, feed_cost, value_produced, net_profit)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (log_date, flock_id, crates, pieces, good_eggs, spoiled_count, total_feed_cost, value_of_good_eggs, net_profit))
+
+        # 2. Decrease feed stock
+        db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (feed_quantity_used, feed_item_id))
         
-        # 2. Update the main inventory table to increase the stock of eggs
-        db.execute("UPDATE inventory SET quantity = quantity + ? WHERE id = ?", 
-                   (total_quantity, egg_inventory_item['id']))
-        
-        # If both commands succeed, commit the changes
+        # 3. Increase egg stock
+        db.execute("UPDATE inventory SET quantity = quantity + ? WHERE name = 'Eggs'", (good_eggs,))
+
+        # 4. Create the multi-part journal entry
+        description = f"Daily egg production for {log_date}"
+        # A) Move feed cost into WIP
+        db.execute("INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
+                   (log_date, f"{description} (Feed Cost)", wip_account_id, feed_inventory_acc_id, total_feed_cost, g.user.id))
+        # B) Move total value of all eggs out of WIP into Egg Inventory
+        db.execute("INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
+                   (log_date, f"{description} (Value Produced)", egg_inventory_acc_id, wip_account_id, total_value_produced, g.user.id))
+        # C) If spoilage, reclassify from Egg Inventory to Spoilage Expense
+        if value_of_spoilage > 0:
+            db.execute("INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
+                       (log_date, f"{description} (Spoilage)", spoilage_expense_acc_id, egg_inventory_acc_id, value_of_spoilage, g.user.id))
+
         db.commit()
-        # --- End of Transaction ---
+        flash(f"Production for {log_date} logged successfully. Daily Net Profit/Loss: ₦{net_profit:,.2f}", "success")
 
-        flash(f'{crates} crates and {pieces} pieces ({total_quantity} total eggs) logged and added to inventory!', 'success')
-
-    except (ValueError, TypeError) as e:
-        flash(f"Invalid data provided. Please check your numbers. Error: {e}", 'danger')
-        db.rollback()
     except Exception as e:
-        flash(f"An unexpected error occurred: {e}", 'danger')
         db.rollback()
-
+        # Display the actual error message to the user for better debugging
+        flash(f"An error occurred: {e}", "danger")
+        
     return redirect(url_for('poultry_dashboard'))
 @app.route('/poultry/flock/add', methods=['POST'])
 @login_required
@@ -2588,28 +2600,42 @@ def add_contact():
             return redirect(url_for('contacts_dashboard'))
 
         new_account_id = None
-        # --- NEW LOGIC: If the contact is a Customer, create their A/R account ---
+        # --- NEW, MORE ROBUST LOGIC ---
         if contact_type == 'Customer':
-            # 1. Find the main "Accounts Receivable" parent account
+            # 1. Find the parent "Accounts Receivable" account
             parent_ar_acc = db.execute("SELECT code FROM accounts WHERE name = 'Accounts Receivable'").fetchone()
             if not parent_ar_acc:
                 raise Exception("CRITICAL: Parent 'Accounts Receivable' account not found.")
             parent_code = parent_ar_acc['code']
             
-            # 2. Find the last sub-account code to create a new one
-            last_sub_acc_row = db.execute("SELECT MAX(code) FROM accounts WHERE code LIKE ?", (f"{parent_code}.%",)).fetchone()
-            new_code = f"{parent_code}.01"
-            if last_sub_acc_row and last_sub_acc_row[0]:
-                parts = last_sub_acc_row[0].split('.')
-                new_code = f"{parent_code}.{int(parts[1]) + 1:02d}"
+            # 2. Find all existing sub-accounts for A/R
+            # The pattern for the LIKE clause is passed as a parameter.
+            like_pattern = f"{parent_code}.%"
+            sub_accounts = db.execute("SELECT code FROM accounts WHERE code LIKE ?", (like_pattern,)).fetchall()
 
-            # 3. Create the new sub-account for this customer
+            # 3. Find the highest existing sub-account number numerically
+            highest_sub_num = 0
+            for acc in sub_accounts:
+                try:
+                    # Split the code (e.g., "1200.01") and get the part after the dot
+                    sub_num = int(acc['code'].split('.')[1])
+                    if sub_num > highest_sub_num:
+                        highest_sub_num = sub_num
+                except (IndexError, ValueError):
+                    # Ignore any codes that don't match the "parent.sub" format
+                    continue
+
+            # 4. Create the new code by adding 1 to the highest found number
+            new_sub_num = highest_sub_num + 1
+            new_code = f"{parent_code}.{new_sub_num:02d}" # Formats as "1200.01", "1200.02", etc.
             account_name = f"A/R - {name}"
+
+            # 5. Insert the new account
             cursor = db.cursor()
             cursor.execute("INSERT INTO accounts (code, name, type) VALUES (?, ?, 'Asset')", (new_code, account_name))
             new_account_id = cursor.lastrowid
 
-        # 4. Insert the contact and link their new account_id
+        # 6. Insert the contact and link their new account_id
         db.execute("INSERT INTO contacts (name, type, phone, email, account_id) VALUES (?, ?, ?, ?, ?)",
                      (name, contact_type, phone, email, new_account_id))
         db.commit()
@@ -2620,7 +2646,6 @@ def add_contact():
         flash(f"An error occurred: {e}", "danger")
     
     return redirect(url_for('contacts_dashboard'))
-
 # ==============================================================================
 # 16. ERROR HANDLERS & MAIN EXECUTION
 # ==============================================================================
