@@ -6,15 +6,13 @@
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom no-print">
         <h1 class="h2">Statement of Account</h1>
         <div class="btn-toolbar mb-2 mb-md-0">
-            <a href="{{ url_for('contact_balances') }}" class="btn btn-sm btn-outline-secondary me-2">
-                <i class="bi bi-arrow-left"></i> Back to Balances
+            <a href="{{ url_for('contacts_dashboard') }}" class="btn btn-sm btn-outline-secondary me-2">               <i class="bi bi-arrow-left"></i> Back to Balances
             </a>
             <button onclick="window.print();" class="btn btn-sm btn-outline-primary">
                 <i class="bi bi-printer-fill"></i> Print Statement
             </button>
         </div>
     </div>
-
     <!-- Date Selection Form -->
     <form method="GET" action="{{ url_for('contact_ledger', contact_id=contact.id) }}" class="card p-3 mb-4 no-print bg-light">
         <div class="row align-items-end">
