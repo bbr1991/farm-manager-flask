@@ -48,9 +48,10 @@
                 
                 <li class="sidebar-menu-header mt-3">OPERATIONS</li>
                 <li><a href="{{ url_for('inventory_dashboard') }}" class="{% if 'inventory' in request.endpoint %}active{% endif %}"><i class="bi bi-boxes"></i>Inventory</a></li>
+                <li><a href="{{ url_for('manage_sales_packages') }}" class="{% if request.endpoint == 'manage_sales_packages' %}active{% endif %}"><i class="bi bi-tags-fill"></i>Sales Packages</a></li>
                 <li><a href="{{ url_for('water_dashboard') }}" class="{% if 'water' in request.endpoint %}active{% endif %}"><i class="bi bi-moisture"></i>Water</a></li>
                 <li><a href="{{ url_for('contacts_dashboard') }}" class="{% if 'contacts' in request.endpoint %}active{% endif %}"><i class="bi bi-people-fill"></i>Contacts</a></li>
-
+                
                 <!-- NEW: Grouped Financial Sub-menu -->
                 {% if g.user and g.user.has_permission('view_bookkeeping') %}
                 <li class="sidebar-menu-header mt-3">FINANCE & ADMIN</li>

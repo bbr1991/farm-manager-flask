@@ -3,63 +3,183 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h2">New Customer Transaction</h1>
+    <h1 class="h2"><i class="bi bi-person-check-fill me-2"></i>New Customer Transaction</h1>
     <a href="{{ url_for('contacts_dashboard') }}" class="btn btn-secondary">Back to Contacts</a>
 </div>
 
 <div class="card shadow-sm">
     <div class="card-body">
         <form action="{{ url_for('customer_transaction') }}" method="POST">
+            <!-- SECTION 1: COMMON FIELDS (Always Visible) -->
             <div class="row g-3">
-                <div class="col-md-6">
-                    <label for="date" class="form-label">Transaction Date</label>
-                    <input type="date" class="form-control" name="date" value="{{ today_date }}" required>
-                </div>
+                <div class="col-md-6"><label for="date" class="form-label">Transaction Date</label><input type="date" class="form-control" name="date" value="{{ today_date }}" required></div>
                 <div class="col-md-6">
                     <label for="customer_id" class="form-label">Select Customer</label>
                     <select class="form-select" name="customer_id" required>
                         <option disabled selected value="">-- Choose a customer --</option>
-                        {% for customer in customers %}
-                            <option value="{{ customer.id }}">{{ customer.name }}</option>
-                        {% endfor %}
+                        {% for customer in customers %}<option value="{{ customer.id }}">{{ customer.name }}</option>{% endfor %}
                     </select>
-                </div>
-                <div class="col-12">
-                    <label class="form-label">Transaction Type</label>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="transaction_type" id="type_deposit" value="deposit" checked>
-                        <label class="form-check-label" for="type_deposit">
-                            Customer Deposit / Payment on Account (Cash comes IN)
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="transaction_type" id="type_credit_sale" value="credit_sale">
-                        <label class="form-check-label" for="type_credit_sale">
-                            Credit Sale (Goods go OUT on credit)
-                        </label>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <label for="payment_account_id" class="form-label">Cash/Bank Account</label>
-                    <select class="form-select" name="payment_account_id">
-                        <option value="">-- Select for deposits --</option>
-                        {% for account in asset_accounts %}
-                            <option value="{{ account.id }}">{{ account.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <label for="amount" class="form-label">Amount (₦)</label>
-                    <input type="number" step="0.01" class="form-control" name="amount" required>
-                </div>
-                <div class="col-12">
-                    <label for="description" class="form-label">Description / Memo</label>
-                    <input type="text" class="form-control" name="description" placeholder="e.g., Deposit for 100 bags of feed, Sale Invoice #123" required>
                 </div>
             </div>
+            <hr>
+
+            <!-- SECTION 2: TRANSACTION TYPE SELECTOR -->
+            <div class="mb-3">
+                <label class="form-label">What type of transaction is this?</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="transaction_type" id="type_deposit" value="deposit" checked>
+                    <label class="form-check-label" for="type_deposit"><strong>Customer Deposit / Payment on Account</strong> (Cash is IN)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="transaction_type" id="type_credit_sale" value="credit_sale">
+                    <label class="form-check-label" for="type_credit_sale"><strong>Credit Sale</strong> (Goods go OUT on credit)</label>
+                </div>
+            </div>
+            <hr>
+
+            <!-- SECTION 3: DEPOSIT FIELDS (Visible by default) -->
+            <div id="deposit-fields">
+                <h5 class="text-muted">Deposit Details</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Deposit Into (Cash/Bank Account)</label>
+                        <select class="form-select" name="payment_account_id">
+                            <option value="">-- Select account --</option>
+                            {% for account in asset_accounts %}<option value="{{ account.id }}">{{ account.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6"><label class="form-label">Amount (₦)</label><input type="number" step="0.01" class="form-control" name="amount"></div>
+                    <div class="col-12"><label class="form-label">Description / Memo</label><input type="text" class="form-control" name="description" placeholder="e.g., Advance payment for order #451"></div>
+                </div>
+            </div>
+
+            <!-- SECTION 4: CREDIT SALE FIELDS (Initially hidden) -->
+            <div id="credit-sale-fields" style="display: none;">
+                <h5 class="text-muted">Credit Sale Details</h5>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Select Item to Add</label>
+                        <select class="form-select" id="inventory_item_selector">
+                             <option disabled selected value="">-- Choose a package --</option>
+                            {% for item in inventory_items %}<option value="{{ item.id }}" data-price="{{ item.sale_price }}" data-name="{{ item.package_name }}">{{ item.package_name }} (₦{{item.sale_price}})</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3"><label class="form-label">Quantity</label><input type="number" class="form-control" id="quantity_selector" value="1"></div>
+                    <div class="col-md-3 mb-3 d-flex align-items-end"><button type="button" class="btn btn-info w-100" id="add-item-btn">Add Item</button></div>
+                </div>
+                <table class="table table-sm">
+                    <thead><tr><th>Item</th><th class="text-center">Qty</th><th class="text-end">Subtotal</th><th></th></tr></thead>
+                    <tbody id="sale-items-table"></tbody>
+                    <tfoot><tr><th colspan="2" class="text-end fs-5">Total Sale Value:</th><th id="grand-total" class="text-end fs-5">₦0.00</th><th></th></tr></tfoot>
+                </table>
+                <div id="hidden-inputs-container"></div>
+                <input type="hidden" name="total_amount" id="hidden-total-amount">
+            </div>
+
+            <!-- SECTION 5: SUBMIT BUTTON -->
             <hr class="my-4">
             <button type="submit" class="btn btn-primary btn-lg">Post Transaction</button>
         </form>
     </div>
 </div>
+{% endblock %}
+
+
+{% block scripts %}
+    {{ super() }}
+    <script>
+    // This is the full, correct JavaScript for this page
+    document.addEventListener('DOMContentLoaded', function() {
+        const depositFields = document.getElementById('deposit-fields');
+        const creditSaleFields = document.getElementById('credit-sale-fields');
+        
+        // --- Logic to toggle the form sections ---
+        document.querySelectorAll('input[name="transaction_type"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'credit_sale') {
+                    depositFields.style.display = 'none';
+                    creditSaleFields.style.display = 'block';
+                } else {
+                    depositFields.style.display = 'block';
+                    creditSaleFields.style.display = 'none';
+                }
+            });
+        });
+
+        // --- Mini-POS Logic for Credit Sale Section ---
+        const addItemBtn = document.getElementById('add-item-btn');
+        const itemSelect = document.getElementById('inventory_item_selector');
+        const quantityInput = document.getElementById('quantity_selector');
+        const saleItemsTable = document.getElementById('sale-items-table');
+        const grandTotalEl = document.getElementById('grand-total');
+        const hiddenInputsContainer = document.getElementById('hidden-inputs-container');
+        const hiddenTotalAmountInput = document.getElementById('hidden-total-amount');
+
+        let saleItems = [];
+        let itemIndex = 0;
+
+        addItemBtn.addEventListener('click', addItemToSale);
+
+        saleItemsTable.addEventListener('click', function(e) {
+            if (e.target && e.target.closest('.remove-item-btn')) {
+                const rowToRemove = e.target.closest('tr');
+                const indexToRemove = parseInt(rowToRemove.dataset.index, 10);
+                removeItemFromSale(indexToRemove);
+            }
+        });
+
+        function addItemToSale() {
+            const selectedOption = itemSelect.options[itemSelect.selectedIndex];
+            const quantity = parseFloat(quantityInput.value);
+            if (!selectedOption || selectedOption.value === "" || !quantity || quantity <= 0) {
+                alert('Please select an item and enter a valid quantity.');
+                return;
+            }
+            const price = parseFloat(selectedOption.getAttribute('data-price')) || 0;
+            const item = {
+                id: selectedOption.value, name: selectedOption.dataset.name,
+                price: price, quantity: quantity, index: itemIndex++
+            };
+            saleItems.push(item);
+            renderSaleTable();
+        }
+        
+        function removeItemFromSale(indexToRemove) {
+            saleItems = saleItems.filter(item => item.index !== indexToRemove);
+            renderSaleTable();
+        }
+
+        function renderSaleTable() {
+            saleItemsTable.innerHTML = '';
+            hiddenInputsContainer.innerHTML = '';
+            let total = 0;
+
+            if (saleItems.length === 0) {
+                 saleItemsTable.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No items added.</td></tr>';
+            } else {
+                saleItems.forEach((item, i) => {
+                    const subtotal = item.price * item.quantity;
+                    total += subtotal;
+                    const row = document.createElement('tr');
+                    row.dataset.index = item.index;
+                    row.innerHTML = `
+                        <td>${item.name}</td>
+                        <td class="text-center">${item.quantity}</td>
+                        <td class="text-end">₦${subtotal.toFixed(2)}</td>
+                        <td class="text-center"><button type="button" class="btn btn-danger btn-sm remove-item-btn">×</button></td>
+                    `;
+                    saleItemsTable.appendChild(row);
+
+                    hiddenInputsContainer.innerHTML += `
+                        <input type="hidden" name="items[${i}][id]" value="${item.id}">
+                        <input type="hidden" name="items[${i}][quantity]" value="${item.quantity}">
+                    `;
+                });
+            }
+
+            grandTotalEl.textContent = `₦${total.toFixed(2)}`;
+            hiddenTotalAmountInput.value = total.toFixed(2);
+        }
+    });
+    </script>
 {% endblock %}

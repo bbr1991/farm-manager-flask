@@ -921,46 +921,82 @@ def add_account():
 # ==============================================================================
 # 8. DATA ENTRY ROUTES (THE "THREE PILLARS")
 # ==============================================================================
-# Add this new route to Section 8 in app.py
-
 @app.route('/transactions/customer', methods=['GET', 'POST'])
 @login_required
-@permission_required('add_sale') # Reuse permission
+@permission_required('add_sale')
 def customer_transaction():
     db = get_db()
     
     if request.method == 'POST':
         try:
+            # --- Common data for both transaction types ---
             tx_date = request.form.get('date')
             customer_id = int(request.form.get('customer_id'))
             tx_type = request.form.get('transaction_type')
-            payment_account_id = int(request.form.get('payment_account_id'))
-            amount = float(request.form.get('amount'))
-            description = request.form.get('description')
             
-            # Get the customer's personal A/R account
             customer = db.execute("SELECT * FROM contacts WHERE id = ?", (customer_id,)).fetchone()
-            customer_ar_id = customer['account_id']
-            if not customer_ar_id:
+            if not customer or not customer['account_id']:
                 raise Exception("This customer does not have a linked receivable account.")
+            customer_ar_id = customer['account_id']
+
+            # --- SMART LOGIC: Handle each transaction type separately ---
             
-            # --- ACCOUNTING LOGIC ---
             if tx_type == 'deposit':
-                # Customer is paying in advance (DEPOSIT)
+                # This block only runs for DEPOSITS (no inventory change)
+                payment_account_id = int(request.form.get('payment_account_id'))
+                amount = float(request.form.get('amount'))
+                description = request.form.get('description')
+                
                 debit_id, credit_id = payment_account_id, customer_ar_id
+                db.execute("""
+                    INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_contact_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (tx_date, description, debit_id, credit_id, amount, g.user.id, customer_id))
+
             elif tx_type == 'credit_sale':
-                # Customer is taking goods on credit (CREDIT SALE)
+                # This block only runs for CREDIT SALES (with inventory change)
+                total_amount = float(request.form.get('total_amount'))
+                description = f"Credit Sale to {customer['name']}"
+                
+                # --- NEW INVENTORY LOGIC (COPIED FROM add_sale_post) ---
+                packages_sold = []
+                i = 0
+                while True:
+                    package_id = request.form.get(f'items[{i}][id]')
+                    if not package_id: break
+                    quantity_of_packages = float(request.form.get(f'items[{i}][quantity]'))
+                    packages_sold.append({'id': int(package_id), 'quantity': quantity_of_packages})
+                    i += 1
+                
+                if not packages_sold:
+                    raise Exception("Cannot record a credit sale with no items.")
+
+                inventory_reduction_list = {}
+                for package in packages_sold:
+                    package_info = db.execute("SELECT base_inventory_item_id, quantity_per_package FROM sales_packages WHERE id = ?", (package['id'],)).fetchone()
+                    base_item_id = package_info['base_inventory_item_id']
+                    pieces_to_reduce = package['quantity'] * package_info['quantity_per_package']
+                    inventory_reduction_list[base_item_id] = inventory_reduction_list.get(base_item_id, 0) + pieces_to_reduce
+                # --- END OF NEW INVENTORY LOGIC ---
+                
+                # Debit Customer's A/R, Credit Sales Revenue
                 sales_revenue_id = db.execute("SELECT id FROM accounts WHERE name = 'Product Sales'").fetchone()['id']
                 debit_id, credit_id = customer_ar_id, sales_revenue_id
+                
+                cursor = db.cursor()
+                cursor.execute("""
+                    INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_contact_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (tx_date, description, debit_id, credit_id, total_amount, g.user.id, customer_id))
+
+                # Reduce inventory for each item sold
+                for item_id, total_pieces in inventory_reduction_list.items():
+                    db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (total_pieces, item_id))
+
             else:
-                raise Exception("Invalid transaction type.")
+                raise Exception("Invalid transaction type specified.")
 
-            db.execute("""
-                INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_contact_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (tx_date, description, debit_id, credit_id, amount, g.user.id, customer_id))
             db.commit()
-
             flash(f"Transaction for {customer['name']} recorded successfully.", "success")
             return redirect(url_for('contact_ledger', contact_id=customer_id))
             
@@ -969,106 +1005,227 @@ def customer_transaction():
             flash(f"An error occurred: {e}", "danger")
             return redirect(url_for('customer_transaction'))
 
-    # For GET request, prepare data for the form
+    # --- GET request logic (this is perfect as is) ---
     customers = db.execute("SELECT * FROM contacts WHERE type = 'Customer' ORDER BY name").fetchall()
     asset_accounts = db.execute("SELECT * FROM accounts WHERE type = 'Asset' AND name NOT LIKE 'A/R - %' ORDER BY name").fetchall()
     
-    return render_template(
-        'customer_transaction.html',
-        user=g.user,
-        customers=customers,
-        asset_accounts=asset_accounts,
-        today_date=date.today().strftime('%Y-%m-%d')
-    )
+    # We must fetch the packages for sale here too
+    packages_for_sale = db.execute("""
+        SELECT sp.* FROM sales_packages sp
+        JOIN inventory i ON sp.base_inventory_item_id = i.id
+        WHERE i.quantity >= sp.quantity_per_package
+    """).fetchall()
+    
+    return render_template('customer_transaction.html', user=g.user, customers=customers, asset_accounts=asset_accounts, inventory_items=packages_for_sale, today_date=date.today().strftime('%Y-%m-%d'))
+
 @app.route('/sales/new')
 @login_required
-@check_day_closed('date')
 @permission_required('add_sale')
 def new_sale():
+    """Diagnostic version to find the empty dropdown problem."""
     db = get_db()
-    inventory_items = db.execute("SELECT * FROM inventory WHERE quantity > 0 AND sale_price > 0 ORDER BY name ASC").fetchall()
+    print("\n--- RUNNING DIAGNOSTIC FOR /sales/new ---")
 
-    # --- NEW: Smart Account Restriction Logic ---
-    # Check if the logged-in user is a cashier with a dedicated till.
-    if g.user.cash_account_id:
-        # If yes, fetch ONLY their dedicated cash account.
-        print(f"User {g.user.username} is a cashier. Fetching only their till account (ID: {g.user.cash_account_id}).")
-        asset_accounts = db.execute(
-            "SELECT * FROM accounts WHERE id = ?", 
-            (g.user.cash_account_id,)
-        ).fetchall()
+    # Test 1: Do any sales packages exist at all?
+    all_packages = db.execute("SELECT * FROM sales_packages").fetchall()
+    print(f"Found {len(all_packages)} total sales package(s) defined.")
+    for pkg in all_packages:
+        print(f"  - Package: ID={pkg['id']}, Name='{pkg['package_name']}', BaseItemID={pkg['base_inventory_item_id']}")
+
+    # Test 2: Let's check the inventory status for those base items
+    print("\nChecking inventory status for base items...")
+    base_item_ids = {pkg['base_inventory_item_id'] for pkg in all_packages}
+    if base_item_ids:
+        # Create the correct number of placeholders for the query
+        placeholders = ', '.join('?' for _ in base_item_ids)
+        inventory_status = db.execute(f"SELECT id, name, quantity FROM inventory WHERE id IN ({placeholders})", list(base_item_ids)).fetchall()
+        for item in inventory_status:
+            print(f"  - Inventory: ID={item['id']}, Name='{item['name']}', Quantity on Hand={item['quantity']}")
     else:
-        # Otherwise (for an admin/manager), fetch all active asset accounts.
-        print(f"User {g.user.username} is a manager. Fetching all asset accounts.")
-        asset_accounts = db.execute(
-            "SELECT * FROM accounts WHERE type = 'Asset' AND is_active = 1 ORDER BY name ASC"
-        ).fetchall()
-    # --- END of new logic ---
+        print("  - No base items to check.")
+        
+    # This is the real query we are debugging
+    packages_for_sale = db.execute("""
+        SELECT sp.*, i.name as base_item_name, i.quantity as stock_on_hand
+        FROM sales_packages sp
+        JOIN inventory i ON sp.base_inventory_item_id = i.id
+        WHERE i.quantity >= sp.quantity_per_package
+    """).fetchall()
+    
+    print(f"\nFINAL RESULT: The query found {len(packages_for_sale)} package(s) available for sale.")
+    print("-----------------------------------------\n")
+
+    # The rest of the function remains the same
+    if g.user.cash_account_id:
+        asset_accounts = db.execute("SELECT * FROM accounts WHERE id = ?", (g.user.cash_account_id,)).fetchall()
+    else:
+        asset_accounts = db.execute("SELECT * FROM accounts WHERE type = 'Asset' AND is_active = 1 ORDER BY name ASC").fetchall()
 
     return render_template(
         'add_sale.html', 
         user=g.user, 
-        inventory_items=inventory_items, 
+        inventory_items=packages_for_sale, 
         asset_accounts=asset_accounts
     )
 @app.route('/sales/add', methods=['POST'])
 @login_required
-@check_day_closed('date')
 @permission_required('add_sale')
+@check_day_closed('date')
 def add_sale_post():
+    """
+    Handles a new sale, calculating inventory reduction based on packages sold.
+    """
     db = get_db()
     cursor = db.cursor()
     try:
         sale_date = request.form.get('date')
         total_amount = float(request.form.get('total_amount'))
         
-        # --- NEW: Smart Account Selection Logic ---
-        # Check if the logged-in user has a dedicated cash account.
         if g.user.cash_account_id:
-            # If yes, force the sale to debit their account.
             payment_account_id = g.user.cash_account_id
-            print(f"Cashier Sale: Forcing debit to user's linked account ID: {payment_account_id}")
         else:
-            # Otherwise (e.g., for an Admin), get the account from the form.
             payment_account_id = int(request.form.get('debit_account_id'))
-            print(f"Manager Sale: Using account ID from form: {payment_account_id}")
-        # --- END of new logic ---
 
-        items_sold = []
+        # --- New Inventory Logic ---
+        packages_sold = []
         i = 0
         while True:
-            item_id = request.form.get(f'items[{i}][id]')
-            if not item_id: break
-            quantity = float(request.form.get(f'items[{i}][quantity]'))
-            items_sold.append({'id': int(item_id), 'quantity': quantity})
+            package_id = request.form.get(f'items[{i}][id]')
+            if not package_id: break
+            quantity_of_packages = float(request.form.get(f'items[{i}][quantity]'))
+            packages_sold.append({'id': int(package_id), 'quantity': quantity_of_packages})
             i += 1
 
-        # ... (rest of the validation remains the same) ...
+        if not packages_sold:
+            flash('Cannot record a sale with no items.', 'warning')
+            return redirect(url_for('new_sale'))
+            
+        inventory_reduction_list = {}
         
-        # The rest of the function proceeds as before, using the `payment_account_id`
-        # variable we defined above.
-        sales_account = cursor.execute("SELECT id FROM accounts WHERE name = 'Product Sales'").fetchone()
-        credit_account_id = sales_account['id']
-        description = f"Point of Sale by {g.user.username} with {len(items_sold)} item(s)."
+        for package in packages_sold:
+            package_info = db.execute("SELECT base_inventory_item_id, quantity_per_package FROM sales_packages WHERE id = ?", (package['id'],)).fetchone()
+            base_item_id = package_info['base_inventory_item_id']
+            pieces_to_reduce = package['quantity'] * package_info['quantity_per_package']
+            inventory_reduction_list[base_item_id] = inventory_reduction_list.get(base_item_id, 0) + pieces_to_reduce
 
-        # 1. Create the journal entry
+        # --- DATABASE TRANSACTION ---
+        
+        # --- THIS IS THE CORRECTED JOURNAL ENTRY QUERY ---
+        sales_account = cursor.execute("SELECT id FROM accounts WHERE name = 'Product Sales'").fetchone()
+        if not sales_account:
+            raise Exception("CRITICAL: 'Product Sales' account not found in Chart of Accounts.")
+        credit_account_id = sales_account['id']
+        description = f"Point of Sale transaction by {g.user.username}"
+        
         cursor.execute("""
             INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (sale_date, description, payment_account_id, credit_account_id, total_amount, g.user.id))
-        
         new_entry_id = cursor.lastrowid
         
-        # ... (inventory update and redirect logic remains the same) ...
+        # Loop through our reduction list and update the main inventory
+        for item_id, total_pieces in inventory_reduction_list.items():
+            db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (total_pieces, item_id))
         
         db.commit()
-        flash(f"Sale of ₦{total_amount:,.2f} recorded successfully!", 'success')
+        flash(f"Sale of ₦{total_amount:,.2f} recorded and inventory updated!", 'success')
         return redirect(url_for('sale_receipt', entry_id=new_entry_id))
 
     except Exception as e:
         db.rollback()
-        flash(f"An error occurred while processing the sale: {e}", "danger")
+        flash(f"An error occurred: {e}", "danger")
         return redirect(url_for('new_sale'))
+@app.route('/sales/packages')
+@login_required
+@permission_required('edit_inventory') # Reuse permission
+def manage_sales_packages():
+    """Displays the new page for managing sales packages."""
+    db = get_db()
+    # Get base inventory items (like 'Eggs') that can be packaged for sale.
+    base_items = db.execute("SELECT * FROM inventory WHERE category = 'Produce' ORDER BY name").fetchall()
+    # Get all existing packages to display in a list.
+    packages = db.execute("""
+        SELECT sp.*, i.name as base_item_name
+        FROM sales_packages sp JOIN inventory i ON sp.base_inventory_item_id = i.id
+        ORDER BY sp.package_name
+    """).fetchall()
+    
+    return render_template(
+        'manage_sales_packages.html',
+        user=g.user,
+        base_items=base_items,
+        packages=packages
+    )
+
+@app.route('/sales/packages/add', methods=['POST'])
+@login_required
+@permission_required('edit_inventory')
+def add_sales_package():
+    """Handles creating a new sales package."""
+    db = get_db()
+    try:
+        name = request.form.get('package_name')
+        base_item_id = int(request.form.get('base_inventory_item_id'))
+        qty_per_package = int(request.form.get('quantity_per_package'))
+        price = float(request.form.get('sale_price'))
+
+        db.execute("""
+            INSERT INTO sales_packages (package_name, base_inventory_item_id, quantity_per_package, sale_price)
+            VALUES (?, ?, ?, ?)
+        """, (name, base_item_id, qty_per_package, price))
+        db.commit()
+        flash(f"New sales package '{name}' created successfully.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred: {e}", "danger")
+        
+    return redirect(url_for('manage_sales_packages'))
+@app.route('/sales/packages/update/<int:package_id>', methods=['POST'])
+@login_required
+@permission_required('edit_inventory')
+def update_sales_package(package_id):
+    """Handles updating an existing sales package."""
+    db = get_db()
+    try:
+        # Get the new data from the edit form
+        name = request.form.get('package_name')
+        base_item_id = int(request.form.get('base_inventory_item_id'))
+        qty_per_package = int(request.form.get('quantity_per_package'))
+        price = float(request.form.get('sale_price'))
+
+        db.execute("""
+            UPDATE sales_packages SET
+                package_name = ?,
+                base_inventory_item_id = ?,
+                quantity_per_package = ?,
+                sale_price = ?
+            WHERE id = ?
+        """, (name, base_item_id, qty_per_package, price, package_id))
+        db.commit()
+        flash(f"Sales package '{name}' updated successfully.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred while updating the package: {e}", "danger")
+        
+    return redirect(url_for('manage_sales_packages'))
+
+
+@app.route('/sales/packages/delete/<int:package_id>', methods=['POST'])
+@login_required
+@permission_required('edit_inventory')
+def delete_sales_package(package_id):
+    """Handles deleting a sales package."""
+    db = get_db()
+    try:
+        # It's safe to delete sales packages as they are not directly linked in historical logs.
+        db.execute("DELETE FROM sales_packages WHERE id = ?", (package_id,))
+        db.commit()
+        flash("Sales package deleted successfully.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred while deleting the package: {e}", "danger")
+        
+    return redirect(url_for('manage_sales_packages'))
 @app.route('/expenses/new')
 @login_required
 @check_day_closed('date')
@@ -1876,86 +2033,87 @@ def log_inventory_usage():
 def add_egg_log():
     db = get_db()
     try:
-        # --- Get Data From the Form ---
+        # --- Get Data From the SIMPLER Form (no value_per_crate needed) ---
         log_date = request.form.get('log_date')
         flock_id = int(request.form.get('flock_id'))
         feed_item_id = int(request.form.get('feed_item_id'))
         feed_quantity_used = float(request.form.get('feed_quantity_used'))
-        value_per_crate = float(request.form.get('value_per_crate'))
         crates = int(request.form.get('crates', 0) or 0)
         pieces = int(request.form.get('pieces', 0) or 0)
         spoiled_count = int(request.form.get('spoiled_count', 0) or 0)
 
-        # --- Initial Validation ---
-        if not all([log_date, flock_id, feed_item_id, feed_quantity_used, value_per_crate]):
-            raise Exception("All fields are required. Please fill out the form completely.")
+        # --- Get Current State of Inventory ---
+        # 1. Get the "Eggs" inventory item to see current quantity and value
+        eggs_item = db.execute("SELECT id, quantity, unit_cost FROM inventory WHERE name = 'Eggs'").fetchone()
+        if not eggs_item:
+            raise Exception("CRITICAL: Inventory item 'Eggs' not found. Please create it first.")
+        
+        current_egg_quantity = eggs_item['quantity'] or 0
+        current_egg_unit_cost = eggs_item['unit_cost'] or 0
+        current_total_value = current_egg_quantity * current_egg_unit_cost
+
+        # 2. Get the feed item to calculate the cost of today's production
+        feed_item = db.execute("SELECT unit_cost, quantity, name FROM inventory WHERE id = ?", (feed_item_id,)).fetchone()
+        if not feed_item: raise Exception("Feed item not found.")
+        if feed_quantity_used > feed_item['quantity']: raise Exception(f"Not enough {feed_item['name']} in stock.")
+        
+        # This is the cost of the raw materials (feed) used today
+        cost_of_production_today = feed_quantity_used * (feed_item['unit_cost'] or 0)
 
         # --- Calculations ---
         EGGS_PER_CRATE = 30
         total_eggs_laid = (crates * EGGS_PER_CRATE) + pieces
-        good_eggs = total_eggs_laid - spoiled_count
+        good_eggs_produced_today = total_eggs_laid - spoiled_count
         
-        if good_eggs < 0:
+        if good_eggs_produced_today < 0:
             raise Exception("Spoiled count cannot be greater than total eggs laid.")
             
-        total_value_produced = (total_eggs_laid / EGGS_PER_CRATE) * value_per_crate
-        value_of_spoilage = (spoiled_count / EGGS_PER_CRATE) * value_per_crate
-        value_of_good_eggs = total_value_produced - value_of_spoilage
-        
-        # --- Get Feed Cost ---
-        feed_item = db.execute("SELECT name, unit_cost, quantity FROM inventory WHERE id = ?", (feed_item_id,)).fetchone()
-        if not feed_item: raise Exception("Selected feed item not found in inventory.")
-        if feed_quantity_used > feed_item['quantity']:
-            raise Exception(f"Not enough {feed_item['name']} in stock. Only {feed_item['quantity']} available.")
-        total_feed_cost = feed_quantity_used * (feed_item['unit_cost'] or 0)
-        
-        net_profit = value_of_good_eggs - total_feed_cost
+        # --- THE AVERAGE COST CALCULATION ---
+        new_total_value = current_total_value + cost_of_production_today
+        new_total_quantity = current_egg_quantity + good_eggs_produced_today
+        new_average_unit_cost = new_total_value / new_total_quantity if new_total_quantity > 0 else 0
 
-        # --- Get Account IDs with Robust Checking ---
+        # --- Get Account IDs ---
         def get_account_id(name):
             account = db.execute("SELECT id FROM accounts WHERE name = ?", (name,)).fetchone()
             if not account:
-                raise Exception(f"CRITICAL SETUP ERROR: Account '{name}' not found in Chart of Accounts. Please create it.")
+                raise Exception(f"CRITICAL SETUP ERROR: Account '{name}' not found.")
             return account['id']
 
         feed_inventory_acc_id = get_account_id('Inventory - Feed')
         egg_inventory_acc_id = get_account_id('Inventory - Eggs')
-        wip_account_id = get_account_id('Eggs WIP')
-        spoilage_expense_acc_id = get_account_id('Egg Spoilage Expense')
         
         # --- DATABASE TRANSACTION ---
         
         # 1. Update the operational log
         db.execute("""
-            INSERT INTO egg_log (log_date, flock_id, crates, pieces, quantity, spoiled_count, feed_cost, value_produced, net_profit)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (log_date, flock_id, crates, pieces, good_eggs, spoiled_count, total_feed_cost, value_of_good_eggs, net_profit))
+            INSERT INTO egg_log (log_date, flock_id, crates, pieces, quantity, spoiled_count, feed_cost)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (log_date, flock_id, crates, pieces, good_eggs_produced_today, spoiled_count, cost_of_production_today))
 
         # 2. Decrease feed stock
         db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (feed_quantity_used, feed_item_id))
         
-        # 3. Increase egg stock
-        db.execute("UPDATE inventory SET quantity = quantity + ? WHERE name = 'Eggs'", (good_eggs,))
+        # 3. CRITICAL UPDATE: Update "Eggs" item with new quantity AND new average unit cost
+        db.execute("UPDATE inventory SET quantity = ?, unit_cost = ? WHERE id = ?", 
+                   (new_total_quantity, new_average_unit_cost, eggs_item['id']))
 
-        # 4. Create the multi-part journal entry
-        description = f"Daily egg production for {log_date}"
-        # A) Move feed cost into WIP
-        db.execute("INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
-                   (log_date, f"{description} (Feed Cost)", wip_account_id, feed_inventory_acc_id, total_feed_cost, g.user.id))
-        # B) Move total value of all eggs out of WIP into Egg Inventory
-        db.execute("INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
-                   (log_date, f"{description} (Value Produced)", egg_inventory_acc_id, wip_account_id, total_value_produced, g.user.id))
-        # C) If spoilage, reclassify from Egg Inventory to Spoilage Expense
-        if value_of_spoilage > 0:
-            db.execute("INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
-                       (log_date, f"{description} (Spoilage)", spoilage_expense_acc_id, egg_inventory_acc_id, value_of_spoilage, g.user.id))
+        # 4. Create a simpler, more accurate journal entry
+        #    This entry reflects the conversion of one asset (Feed) into another (Eggs)
+        description = f"Daily egg production cost for {log_date}"
+        db.execute("""
+            INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id) 
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (log_date, description, egg_inventory_acc_id, feed_inventory_acc_id, cost_of_production_today, g.user.id))
+        
+        # Note: Spoilage is now handled as a separate inventory adjustment, not in this production entry.
 
         db.commit()
-        flash(f"Production for {log_date} logged successfully. Daily Net Profit/Loss: ₦{net_profit:,.2f}", "success")
+        flash(f"Production logged. New average cost for eggs is now ₦{new_average_unit_cost:,.2f} per piece.", "success")
 
     except Exception as e:
         db.rollback()
-        # Display the actual error message to the user for better debugging
         flash(f"An error occurred: {e}", "danger")
         
     return redirect(url_for('poultry_dashboard'))

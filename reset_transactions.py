@@ -1,13 +1,14 @@
 import sqlite3
 import os
 import sys
+import shutil
 
 # --- CONFIGURATION ---
 DATABASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'farm_data.db')
+BACKUP_DATABASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'farm_data_BACKUP.db')
 
 # List of tables that hold PURELY transactional data.
 # These can be safely and completely cleared.
-# Order is important for tables with relationships.
 TABLES_TO_DELETE_FROM = [
     'journal_entries',
     'egg_log',
@@ -15,15 +16,15 @@ TABLES_TO_DELETE_FROM = [
     'water_production_log',
     'brooding_log',
     'daily_closures',
-    'brooding_batches', # A batch is a transaction, not setup
-    'poultry_flocks'    # A flock is a transaction, not setup
+    'brooding_batches',
+    'poultry_flocks'
 ]
 
 # List of tables that contain SETUP data but also have transactional columns
-# that need to be reset to zero.
+# that need to be reset.
 TABLES_TO_UPDATE = {
     'inventory': 'quantity = 0',      # Reset stock count to 0
-    'water_products': 'quantity = 0'  # Reset water stock to 0
+    'water_products': 'quantity = 0'  # Reset water product stock to 0
 }
 
 
@@ -31,10 +32,23 @@ def reset_database_transactions():
     """
     Connects to the database and clears all transactional data.
     Leaves setup data (Users, Accounts, Contacts, Inventory Items) intact.
-    USE WITH EXTREME CAUTION.
+    Automatically creates a backup before running.
     """
     print("--- DATABASE TRANSACTION RESET SCRIPT ---")
     
+    # --- AUTOMATIC BACKUP ---
+    try:
+        print(f"\nCreating a safety backup at: {BACKUP_DATABASE}")
+        shutil.copyfile(DATABASE, BACKUP_DATABASE)
+        print("Backup created successfully.")
+    except Exception as e:
+        print(f"!!! WARNING: Could not create backup file. Error: {e}")
+        confirm_no_backup = input("Do you want to continue without a backup? This is risky. Type 'CONTINUE' to proceed: ")
+        if confirm_no_backup != "CONTINUE":
+            print("Operation cancelled by user.")
+            sys.exit()
+
+    # --- MAIN SCRIPT ---
     try:
         conn = sqlite3.connect(DATABASE)
         cursor = conn.cursor()
@@ -43,7 +57,7 @@ def reset_database_transactions():
         print("- All journal entries, sales, and expenses")
         print("- All brooding batches, poultry flocks, and their logs")
         print("- It will also RESET all inventory stock counts to ZERO.")
-        print("\nSetup data like users, chart of accounts, and contacts will NOT be affected.")
+        print("\nSetup data like users, accounts, contacts, and package definitions will NOT be affected.")
         
         # --- CRITICAL CONFIRMATION STEP ---
         confirm = input("This action cannot be undone. Are you sure you want to proceed? Type 'YES' to confirm: ")
@@ -56,20 +70,20 @@ def reset_database_transactions():
         # 1. DELETE all records from the purely transactional tables.
         for table in TABLES_TO_DELETE_FROM:
             cursor.execute(f"DELETE FROM {table};")
-            # We also reset the autoincrement counter for these tables
+            # Reset the autoincrement counter for these tables for a truly clean start
             cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{table}';")
-            print(f"  - Cleared all records from '{table}' table.")
+            print(f"  - Cleared all records from '{table}'.")
 
-        # 2. UPDATE setup tables to reset their transactional columns (e.g., stock counts).
+        # 2. UPDATE setup tables to reset their transactional columns.
         for table, update_statement in TABLES_TO_UPDATE.items():
             cursor.execute(f"UPDATE {table} SET {update_statement};")
-            print(f"  - Reset stock counts in '{table}' table.")
+            print(f"  - Reset stock counts in '{table}'.")
             
         conn.commit()
         
         print("\n--- SCRIPT COMPLETED SUCCESSFULLY ---")
         print("All transactional data has been cleared.")
-        print("Your database is now in a clean state, ready for deployment.")
+        print("Your database is now clean and ready for live data.")
 
     except sqlite3.Error as e:
         print(f"\n--- DATABASE ERROR ---")

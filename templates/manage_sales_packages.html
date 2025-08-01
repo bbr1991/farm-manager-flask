@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Manage Sales Packages{% endblock %}
+
+{% block content %}
+    <h1 class="h2"><i class="bi bi-tags-fill me-2"></i>Manage Sales Packages</h1>
+    <p>Define the different ways you sell your products, like by the crate, half-crate, or piece.</p>
+
+    <div class="row">
+        <!-- Left Column: Create New Package -->
+        <div class="col-lg-5">
+            <div class="card shadow-sm">
+                <div class="card-header"><h5 class="mb-0">Create New Package</h5></div>
+                <div class="card-body">
+                    <form action="{{ url_for('add_sales_package') }}" method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Package Name (What cashier sees)</label>
+                            <input type="text" name="package_name" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Base Inventory Item</label>
+                            <select name="base_inventory_item_id" class="form-select" required>
+                                <option disabled selected value="">-- Select base item --</option>
+                                {% for item in base_items %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Pieces per Package</label>
+                            <input type="number" name="quantity_per_package" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Sale Price for this Package (₦)</label>
+                            <input type="number" step="0.01" name="sale_price" class="form-control" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Create Package</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Column: Existing Packages Table (UPGRADED) -->
+        <div class="col-lg-7">
+            <div class="card shadow-sm">
+                <div class="card-header"><h5 class="mb-0">Existing Packages</h5></div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead><tr><th>Package Name</th><th>Base Item</th><th>Pieces</th><th class="text-end">Price</th><th class="text-center">Actions</th></tr></thead>
+                            <tbody>
+                                {% for pkg in packages %}
+                                <tr>
+                                    <td>{{ pkg.package_name }}</td><td>{{ pkg.base_item_name }}</td>
+                                    <td>{{ pkg.quantity_per_package }}</td><td class="text-end">₦{{ '{:,.2f}'.format(pkg.sale_price) }}</td>
+                                    <td class="text-center">
+                                        <!-- NEW ACTION BUTTONS -->
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editPackageModal"
+                                                data-bs-id="{{ pkg.id }}"
+                                                data-bs-name="{{ pkg.package_name }}"
+                                                data-bs-base-item-id="{{ pkg.base_inventory_item_id }}"
+                                                data-bs-qty="{{ pkg.quantity_per_package }}"
+                                                data-bs-price="{{ pkg.sale_price }}">
+                                                <i class="bi bi-pencil-fill"></i> Edit
+                                            </button>
+                                            <button class="btn btn-outline-danger" onclick="document.getElementById('delete-package-form-{{ pkg.id }}').submit();">
+                                                <i class="bi bi-trash-fill"></i>
+                                            </button>
+                                        </div>
+                                        <form id="delete-package-form-{{ pkg.id }}" action="{{ url_for('delete_sales_package', package_id=pkg.id) }}" method="POST" class="d-none" onsubmit="return confirm('Are you sure?');"></form>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="5" class="text-center p-4 text-muted">No sales packages defined yet.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Edit Sales Package Modal -->
+    <div class="modal fade" id="editPackageModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Edit Sales Package</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <form id="editPackageForm" method="POST" action="">
+                        <div class="mb-3">
+                            <label class="form-label">Package Name</label>
+                            <input type="text" name="package_name" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Base Inventory Item</label>
+                            <select name="base_inventory_item_id" class="form-select" required>
+                                {% for item in base_items %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Pieces per Package</label>
+                            <input type="number" name="quantity_per_package" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Sale Price (₦)</label>
+                            <input type="number" step="0.01" name="sale_price" class="form-control" required>
+                        </div>
+                        <hr>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+
+{% block scripts %}
+    {{ super() }}
+    <script>
+    // JavaScript for the new Edit Package Modal
+    document.addEventListener('DOMContentLoaded', function() {
+        const editPackageModal = document.getElementById('editPackageModal');
+        if (editPackageModal) {
+            editPackageModal.addEventListener('show.bs.modal', function (event) {
+                const button = event.relatedTarget;
+                const packageId = button.getAttribute('data-bs-id');
+                
+                // Get all the data from the button's attributes
+                const name = button.getAttribute('data-bs-name');
+                const baseItemId = button.getAttribute('data-bs-base-item-id');
+                const qty = button.getAttribute('data-bs-qty');
+                const price = button.getAttribute('data-bs-price');
+
+                const modalForm = editPackageModal.querySelector('#editPackageForm');
+                
+                // Set the form's action URL dynamically
+                modalForm.action = `/sales/packages/update/${packageId}`;
+
+                // Pre-fill all the form fields with the current data
+                modalForm.querySelector('input[name="package_name"]').value = name;
+                modalForm.querySelector('select[name="base_inventory_item_id"]').value = baseItemId;
+                modalForm.querySelector('input[name="quantity_per_package"]').value = qty;
+                modalForm.querySelector('input[name="sale_price"]').value = price;
+            });
+        }
+    });
+    </script>
+{% endblock %}
