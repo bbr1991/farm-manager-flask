@@ -63,11 +63,51 @@
 
     {# Second, add your original smart script for inventory fields #}
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // ... your smart JS to show/hide inventory fields goes here ...
-            // This part is important for your page's interactivity.
-        });
-    </script>
+document.addEventListener('DOMContentLoaded', function() {
+    const expenseForm = document.getElementById('expense-form'); // Give your form an id="expense-form"
+    
+    expenseForm.addEventListener('submit', function(event) {
+        // We stop the form from submitting the normal way.
+        event.preventDefault();
+
+        // Check if the browser is online.
+        if (navigator.onLine) {
+            // If online, submit the form to the server as usual.
+            console.log('Online, submitting form to server...');
+            this.submit();
+        } else {
+            // If OFFLINE, we save the data locally.
+            console.log('Offline, saving transaction to local database...');
+            
+            // 1. Get all the data from the form.
+            const formData = new FormData(this);
+            const data = Object.fromEntries(formData.entries());
+            
+            // 2. Save it to our offline database.
+            saveTransactionOffline({
+                type: 'expense',
+                data: data 
+            })
+            .then(() => {
+                // 3. Ask the Service Worker to sync when it gets a connection.
+                return navigator.serviceWorker.ready;
+            })
+            .then(swRegistration => {
+                return swRegistration.sync.register('sync-pending-expenses');
+            })
+            .then(() => {
+                alert('You are offline. Your expense has been saved and will be uploaded automatically when you reconnect.');
+                // Redirect the user back to the dashboard.
+                window.location.href = "{{ url_for('dashboard') }}";
+            })
+            .catch(err => {
+                console.error('Offline save failed:', err);
+                alert('Could not save your expense offline. Please try again.');
+            });
+        }
+    });
+});
+</script>
 
     {# Third, add our new offline database and form handling logic #}
     <script src="{{ url_for('static', filename='js/idb.js') }}"></script>

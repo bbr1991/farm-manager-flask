@@ -2653,6 +2653,11 @@ def add_contact():
 def page_not_found(e):
     # This handler no longer needs to know about the user.
     return render_template('404.html'), 404
+# ==============================================================================
+# 17. API ROUTES FOR OFFLINE SYNC
+# ==============================================================================
+from flask import jsonify
+
 @app.route('/api/sync/expense', methods=['POST'])
 @login_required 
 def sync_expense():
@@ -2661,29 +2666,22 @@ def sync_expense():
     db = get_db()
 
     try:
-        # Basic validation
-        if not all(k in data for k in ['date', 'description', 'amount', 'payment_account_id', 'expense_category_id']):
-            return jsonify({'status': 'error', 'message': 'Missing required data'}), 400
+        # We find the accounts based on the IDs sent from the form
+        payment_account = db.execute("SELECT * FROM accounts WHERE id = ?", (data['credit_account_id'],)).fetchone()
+        expense_account = db.execute("SELECT * FROM accounts WHERE id = ?", (data['debit_account_id'],)).fetchone()
 
-        # Find the balancing account (Cash, Bank, etc.)
-        payment_account = db.execute("SELECT * FROM accounts WHERE id = ?", (data['payment_account_id'],)).fetchone()
-        if not payment_account:
-            return jsonify({'status': 'error', 'message': 'Payment account not found'}), 404
+        if not payment_account or not expense_account:
+            return jsonify({'status': 'error', 'message': 'Account not found'}), 404
 
-        # Find the expense category account
-        expense_account = db.execute("SELECT * FROM accounts WHERE id = ?", (data['expense_category_id'],)).fetchone()
-        if not expense_account:
-            return jsonify({'status': 'error', 'message': 'Expense category not found'}), 404
-
-        # Create the journal entry: Debit Expense, Credit Asset (Cash/Bank)
+        # Create the journal entry
         db.execute("""
             INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (data['date'], data['description'], expense_account['id'], payment_account['id'], float(data['amount']), g.user.id))
 
         db.commit()
-        print(f"Successfully synced expense: {data['description']}")
-        return jsonify({'status': 'success', 'message': f"Synced expense: {data['description']}"}), 200
+        print(f"Successfully synced offline expense: {data['description']}")
+        return jsonify({'status': 'success', 'message': 'Synced'}), 200
 
     except Exception as e:
         db.rollback()
