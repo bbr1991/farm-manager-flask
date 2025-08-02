@@ -1156,12 +1156,10 @@ def manage_sales_packages():
         base_items=base_items,
         packages=packages
     )
-
 @app.route('/sales/packages/add', methods=['POST'])
 @login_required
 @permission_required('edit_inventory')
 def add_sales_package():
-    """Handles creating a new sales package."""
     db = get_db()
     try:
         name = request.form.get('package_name')
@@ -1169,12 +1167,35 @@ def add_sales_package():
         qty_per_package = int(request.form.get('quantity_per_package'))
         price = float(request.form.get('sale_price'))
 
+        # --- NEW ROBUST CHECK ---
+        # Before we do anything, check if an inventory item with this package name
+        # already exists. This will catch orphans left by previous deletes.
+        existing_inventory_item = db.execute("SELECT id FROM inventory WHERE name = ?", (name,)).fetchone()
+        if existing_inventory_item:
+            # If an orphan exists, we should use it instead of creating a new one.
+            # This is a more advanced concept. For now, the safest thing is to
+            # inform the user to clean it up manually.
+            flash(f"An inventory item named '{name}' already exists. Please delete it from the main Inventory page before creating this package.", "danger")
+            return redirect(url_for('manage_sales_packages'))
+
+        # Now we can proceed as before
         db.execute("""
             INSERT INTO sales_packages (package_name, base_inventory_item_id, quantity_per_package, sale_price)
             VALUES (?, ?, ?, ?)
         """, (name, base_item_id, qty_per_package, price))
+        
+        # Also create the corresponding item in the main inventory
+        db.execute("""
+            INSERT INTO inventory (name, category, quantity, unit, sale_price, unit_cost)
+            VALUES (?, 'Finished Goods', 0, 'Package', ?, 0)
+        """, (name, price))
+
         db.commit()
         flash(f"New sales package '{name}' created successfully.", "success")
+    except sqlite3.IntegrityError:
+        db.rollback()
+        # This will now correctly catch duplicate package names
+        flash(f"A sales package with the name '{name}' already exists.", 'danger')
     except Exception as e:
         db.rollback()
         flash(f"An error occurred: {e}", "danger")

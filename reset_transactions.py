@@ -17,7 +17,8 @@ TABLES_TO_DELETE_FROM = [
     'brooding_log',
     'daily_closures',
     'brooding_batches',
-    'poultry_flocks'
+    'poultry_flocks',
+    'sales_packages'
 ]
 
 # List of tables that contain SETUP data but also have transactional columns
