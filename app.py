@@ -570,7 +570,7 @@ def dashboard():
 
 @app.route('/inventory')
 @login_required
-@permission_required('view_inventory')
+@permission_required('view_inventory_dashboard')
 def inventory_dashboard():
     #
     # NOTE: I have removed the @check_day_closed decorator.
@@ -617,7 +617,7 @@ def inventory_dashboard():
     )
 @app.route('/poultry')
 @login_required
-@permission_required('view_poultry')
+@permission_required('view_poultry_dashboard')
 def poultry_dashboard():
     db = get_db()
     
@@ -658,7 +658,7 @@ def poultry_dashboard():
     )
 @app.route('/water')
 @login_required
-@permission_required('view_water')
+@permission_required('view_water_dashboard')
 def water_dashboard():
     db = get_db()
     
@@ -698,31 +698,51 @@ def water_dashboard():
     )
 @app.route('/contacts')
 @login_required
-@permission_required('view_contacts')
+@permission_required('view_contacts_dashboard')
 def contacts_dashboard():
     db = get_db()
-    
-    # --- Search Logic ---
     search_query = request.args.get('q', '')
+
+    # --- THIS IS THE MODIFIED QUERY ---
+    # It now joins with the users table to get the assigned username
     base_sql = """
         SELECT
-            c.id, c.name, c.type, c.phone, c.email,
+            c.id, c.name, c.type, c.phone, c.email, c.assigned_user_id,
+            u.username as assigned_username,
             (
                 (SELECT COALESCE(SUM(je.amount), 0) FROM journal_entries je WHERE je.debit_account_id = c.account_id)
                 -
                 (SELECT COALESCE(SUM(je.amount), 0) FROM journal_entries je WHERE je.credit_account_id = c.account_id)
             ) as balance
         FROM contacts c
+        LEFT JOIN users u ON c.assigned_user_id = u.id
     """
     params = []
-    if search_query:
-        base_sql += " WHERE c.name LIKE ?"
-        params.append(f"%{search_query}%")
-    base_sql += " ORDER BY c.name ASC"
     
-    contacts_list = db.execute(base_sql, params).fetchall()
+    where_clauses = []
+    if search_query:
+        where_clauses.append("c.name LIKE ?")
+        params.append(f"%{search_query}%")
 
-    # --- KPI Card Calculations ---
+    # If user is NOT an admin, filter to see only their assigned contacts
+    if g.user.role != 'admin':
+        where_clauses.append("(c.assigned_user_id = ? OR c.assigned_user_id IS NULL)") # Show assigned AND unassigned
+        params.append(g.user.id)
+    
+    if where_clauses:
+        base_sql += " WHERE " + " AND ".join(where_clauses)
+        
+    base_sql += " ORDER BY c.name ASC"
+    contacts_list = db.execute(base_sql, params).fetchall()
+    
+    # --- NEW: Fetch users for the assignment modal (for admins) ---
+    assignable_users = []
+    if g.user.role == 'admin':
+        assignable_users = db.execute(
+            "SELECT id, username FROM users WHERE role = 'user' ORDER BY username"
+        ).fetchall()
+
+    # ... the rest of the function (KPI calculations) remains the same ...
     accounts_receivable = 0
     accounts_payable = 0
     for contact in contacts_list:
@@ -738,17 +758,43 @@ def contacts_dashboard():
     }
     
     return render_template(
-        'contacts.html', # This now points to our single, redesigned template
+        'contacts.html',
         user=g.user,
         stats=stats,
-        contacts_list=contacts_list
+        contacts_list=contacts_list,
+        assignable_users=assignable_users  # Pass the new list to the template
     )
+# In app.py, add this new route
+@app.route('/contacts/assign/<int:contact_id>', methods=['POST'])
+@login_required
+@permission_required('assign_contact_user') # Only users with this permission can assign
+def assign_contact_user(contact_id):
+    db = get_db()
+    try:
+        assigned_user_id = request.form.get('assigned_user_id')
+        
+        # If the admin selected "-- Unassigned --", the value will be empty.
+        # We need to store NULL in the database in that case.
+        if not assigned_user_id:
+            assigned_user_id = None
+        
+        db.execute(
+            "UPDATE contacts SET assigned_user_id = ? WHERE id = ?",
+            (assigned_user_id, contact_id)
+        )
+        db.commit()
+        flash("Contact assignment updated successfully.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred: {e}", "danger")
+        
+    return redirect(url_for('contacts_dashboard'))
 # ==============================================================================
 # 7. FINANCIAL CENTER & BOOKKEEPING ROUTES
 # ==============================================================================
 @app.route('/financials')
 @login_required
-@permission_required('view_bookkeeping')
+@permission_required('view_financial_center')
 def financial_center():
     db = get_db()
     thirty_days_ago = (date.today() - timedelta(days=30)).strftime('%Y-%m-%d')
@@ -764,7 +810,7 @@ def financial_center():
     return render_template('financial.html', user=g.user, stats=stats, financial_chart_data=financial_chart_data, recent_journal_entries=recent_journal_entries, key_accounts=key_accounts)
 @app.route('/financials/accounts')
 @login_required
-@permission_required('view_bookkeeping')
+@permission_required('view_chart_of_accounts')
 def chart_of_accounts():
     db = get_db()
     all_accounts_rows = db.execute("SELECT acc.id, acc.code, acc.name, acc.type, (SELECT COALESCE(SUM(je.amount), 0) FROM journal_entries je WHERE je.debit_account_id = acc.id) - (SELECT COALESCE(SUM(je.amount), 0) FROM journal_entries je WHERE je.credit_account_id = acc.id) as balance FROM accounts acc ORDER BY acc.code").fetchall()
@@ -787,7 +833,7 @@ def chart_of_accounts():
 
 @app.route('/financials/journal')
 @login_required
-@permission_required('view_bookkeeping')
+@permission_required('view_general_journal')
 def general_journal():
     db = get_db()
     
@@ -829,7 +875,7 @@ def general_journal():
 
 @app.route('/financials/ledger/<int:account_id>')
 @login_required
-@permission_required('view_bookkeeping')
+@permission_required('view_general_journal')
 def account_ledger(account_id):
     db = get_db()
     account_row = db.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
@@ -855,7 +901,7 @@ def account_ledger(account_id):
 
 @app.route('/financials/accounts/add', methods=['POST'])
 @login_required
-@permission_required('edit_bookkeeping') # Or a more specific permission
+@permission_required('add_chart_of_accounts') # Or a more specific permission
 def add_account():
     """Handles creating a new account from the modal form."""
     db = get_db()
@@ -918,12 +964,54 @@ def add_account():
         db.rollback()
 
     return redirect(url_for('chart_of_accounts'))
+# Add this new route in app.py
+
+@app.route('/journal/reverse/<int:entry_id>', methods=['POST'])
+@login_required
+@permission_required('reverse_journal_entry') # Reuse existing permission
+def reverse_journal_entry(entry_id):
+    """
+    Creates a new journal entry that is the exact reverse of an existing one.
+    """
+    db = get_db()
+    try:
+        # 1. Fetch the original entry
+        original_entry = db.execute(
+            "SELECT * FROM journal_entries WHERE id = ?", (entry_id,)
+        ).fetchone()
+
+        if not original_entry:
+            flash("Original transaction not found.", "danger")
+            return redirect(url_for('general_journal'))
+
+        # 2. Create the reversing entry data
+        reversal_date = date.today().strftime('%Y-%m-%d') # Reverse on today's date
+        reversal_desc = f"REVERSAL of Entry #{original_entry['id']}: {original_entry['description']}"
+        
+        # 3. SWAP the debit and credit accounts
+        reversal_debit_id = original_entry['credit_account_id']
+        reversal_credit_id = original_entry['debit_account_id']
+        
+        # 4. Insert the new reversing entry
+        db.execute("""
+            INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (reversal_date, reversal_desc, reversal_debit_id, reversal_credit_id, original_entry['amount'], g.user.id))
+        
+        db.commit()
+        flash(f"Entry #{entry_id} successfully reversed.", "success")
+
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred during reversal: {e}", "danger")
+
+    return redirect(url_for('general_journal'))
 # ==============================================================================
 # 8. DATA ENTRY ROUTES (THE "THREE PILLARS")
 # ==============================================================================
 @app.route('/transactions/customer', methods=['GET', 'POST'])
 @login_required
-@permission_required('add_sale')
+@permission_required('record_customer_transaction')
 def customer_transaction():
     db = get_db()
     
@@ -1020,7 +1108,7 @@ def customer_transaction():
 
 @app.route('/sales/new')
 @login_required
-@permission_required('add_sale')
+@permission_required('record_new_sale')
 def new_sale():
     """Diagnostic version to find the empty dropdown problem."""
     db = get_db()
@@ -1068,25 +1156,25 @@ def new_sale():
         asset_accounts=asset_accounts
     )
 @app.route('/sales/add', methods=['POST'])
-@login_required
-@permission_required('add_sale')
+@permission_required('record_new_sale')
 @check_day_closed('date')
 def add_sale_post():
     """
-    Handles a new sale, calculating inventory reduction based on packages sold.
+    Handles a new sale, creating TWO journal entries:
+    1. For the revenue (Cash/AR vs Sales).
+    2. For the Cost of Goods Sold (COGS vs Inventory).
     """
     db = get_db()
-    cursor = db.cursor()
     try:
         sale_date = request.form.get('date')
-        total_amount = float(request.form.get('total_amount'))
+        total_sale_amount = float(request.form.get('total_amount'))
         
         if g.user.cash_account_id:
             payment_account_id = g.user.cash_account_id
         else:
             payment_account_id = int(request.form.get('debit_account_id'))
 
-        # --- New Inventory Logic ---
+        # --- Calculate Inventory Reduction and COST of Goods Sold ---
         packages_sold = []
         i = 0
         while True:
@@ -1101,34 +1189,69 @@ def add_sale_post():
             return redirect(url_for('new_sale'))
             
         inventory_reduction_list = {}
+        total_cost_of_goods_sold = 0
         
         for package in packages_sold:
-            package_info = db.execute("SELECT base_inventory_item_id, quantity_per_package FROM sales_packages WHERE id = ?", (package['id'],)).fetchone()
+            # Fetch the base item's ID AND its current unit_cost
+            package_info = db.execute("""
+                SELECT 
+                    sp.base_inventory_item_id, 
+                    sp.quantity_per_package,
+                    i.unit_cost
+                FROM sales_packages sp
+                JOIN inventory i ON sp.base_inventory_item_id = i.id
+                WHERE sp.id = ?
+            """, (package['id'],)).fetchone()
+            
             base_item_id = package_info['base_inventory_item_id']
+            unit_cost = package_info['unit_cost'] or 0
+            
+            # Calculate how many individual pieces to reduce
             pieces_to_reduce = package['quantity'] * package_info['quantity_per_package']
+            
+            # Add to our list for updating the inventory table
             inventory_reduction_list[base_item_id] = inventory_reduction_list.get(base_item_id, 0) + pieces_to_reduce
+            
+            # ** NEW **: Calculate the cost of the items being sold
+            total_cost_of_goods_sold += pieces_to_reduce * unit_cost
+
+        # --- Get Account IDs for Journal Entries ---
+        def get_account_id(name):
+            account = db.execute("SELECT id FROM accounts WHERE name = ?", (name,)).fetchone()
+            if not account:
+                raise Exception(f"CRITICAL SETUP ERROR: Account '{name}' not found.")
+            return account['id']
+
+        sales_revenue_id = get_account_id('Product Sales')
+        cogs_expense_id = get_account_id('Cost of Goods Sold')
+        # IMPORTANT: This assumes your finished goods (like Eggs) are in an inventory
+        # account named 'Inventory - Eggs'. Change if necessary.
+        inventory_asset_id = get_account_id('Inventory - Eggs')
 
         # --- DATABASE TRANSACTION ---
         
-        # --- THIS IS THE CORRECTED JOURNAL ENTRY QUERY ---
-        sales_account = cursor.execute("SELECT id FROM accounts WHERE name = 'Product Sales'").fetchone()
-        if not sales_account:
-            raise Exception("CRITICAL: 'Product Sales' account not found in Chart of Accounts.")
-        credit_account_id = sales_account['id']
-        description = f"Point of Sale transaction by {g.user.username}"
-        
-        cursor.execute("""
+        # ENTRY 1: Record the Revenue
+        description_revenue = f"Point of Sale transaction by {g.user.username}"
+        db.execute("""
             INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (sale_date, description, payment_account_id, credit_account_id, total_amount, g.user.id))
-        new_entry_id = cursor.lastrowid
+        """, (sale_date, description_revenue, payment_account_id, sales_revenue_id, total_sale_amount, g.user.id))
+        new_entry_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        # ENTRY 2: Record the Cost of Goods Sold (if there is a cost)
+        if total_cost_of_goods_sold > 0:
+            description_cogs = f"COGS for Sale #{new_entry_id}"
+            db.execute("""
+                INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (sale_date, description_cogs, cogs_expense_id, inventory_asset_id, total_cost_of_goods_sold, g.user.id))
         
-        # Loop through our reduction list and update the main inventory
+        # Finally, update the physical inventory quantities
         for item_id, total_pieces in inventory_reduction_list.items():
             db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (total_pieces, item_id))
         
         db.commit()
-        flash(f"Sale of ₦{total_amount:,.2f} recorded and inventory updated!", 'success')
+        flash(f"Sale of ₦{total_sale_amount:,.2f} recorded and inventory updated!", 'success')
         return redirect(url_for('sale_receipt', entry_id=new_entry_id))
 
     except Exception as e:
@@ -1137,7 +1260,7 @@ def add_sale_post():
         return redirect(url_for('new_sale'))
 @app.route('/sales/packages')
 @login_required
-@permission_required('edit_inventory') # Reuse permission
+@permission_required('view_sales_packages')
 def manage_sales_packages():
     """Displays the new page for managing sales packages."""
     db = get_db()
@@ -1250,7 +1373,7 @@ def delete_sales_package(package_id):
 @app.route('/expenses/new')
 @login_required
 @check_day_closed('date')
-@permission_required('add_expense')
+@permission_required('record_new_expense')
 def new_expense():
     db = get_db()
     suppliers = db.execute("SELECT * FROM contacts WHERE type = 'Supplier' ORDER BY name ASC").fetchall()
@@ -1262,7 +1385,7 @@ def new_expense():
 @app.route('/expenses/add', methods=['POST'])
 @login_required
 @check_day_closed('date')
-@permission_required('add_expense')
+@permission_required('record_new_expense')
 def add_expense_post():
     db = get_db()
     try:
@@ -1292,7 +1415,7 @@ def add_expense_post():
 @app.route('/journal/add_manual', methods=['POST'])
 @login_required
 @check_day_closed('date')
-@permission_required('add_manual_journal')
+@permission_required('add_manual_journal_entry')
 def add_journal_entry():
     db = get_db()
     try:
@@ -1335,7 +1458,7 @@ def add_journal_entry():
     return redirect(url_for('general_journal'))
 @app.route('/sales/receipt/<int:entry_id>')
 @login_required
-@permission_required('add_sale')
+@permission_required('record_new_sale')
 @check_day_closed('date')
 def sale_receipt(entry_id):
     db = get_db()
@@ -1372,13 +1495,14 @@ def _get_report_dates(request_args):
     return start_str, end_str
 @app.route('/reports')
 @login_required
+@permission_required('view_reports_dashboard')
 def reports_dashboard():
     return render_template('reports_dashboard.html', user=g.user)
 # Add this route to app.py, in Section 10
 
 @app.route('/report/profit-loss')
 @login_required
-@permission_required('view_reports')
+@permission_required('run_financial_reports')
 def report_profit_loss():
     """Calculates and displays the Profit & Loss statement for a date range."""
     # Use our helper to get the date range from the URL arguments
@@ -1445,7 +1569,7 @@ def report_profit_loss():
 
 @app.route('/report/balance-sheet')
 @login_required
-@permission_required('view_reports')
+@permission_required('run_financial_reports')
 def report_balance_sheet():
     """Calculates and displays the Balance Sheet as of a specific date."""
     # A balance sheet is as of a single date, so we primarily use the end_date.
@@ -1526,7 +1650,7 @@ def report_balance_sheet():
 
 @app.route('/report/trial-balance')
 @login_required
-@permission_required('view_reports')
+@permission_required('run_financial_reports')
 def report_trial_balance():
     """Calculates and displays the Trial Balance as of a specific date."""
     start_date, end_date = _get_report_dates(request.args)
@@ -1597,7 +1721,7 @@ def report_trial_balance():
 
 @app.route('/report/eggs')
 @login_required
-@permission_required('view_reports')
+@permission_required('run_operational_reports')
 def report_eggs():
     """Calculates and displays the Egg Collection report."""
     start_date, end_date = _get_report_dates(request.args)
@@ -1638,7 +1762,7 @@ def report_eggs():
 
 @app.route('/report/water')
 @login_required
-@permission_required('view_reports')
+@permission_required('run_operational_reports')
 def report_water():
     """Calculates and displays the Water Production report."""
     start_date, end_date = _get_report_dates(request.args)
@@ -1721,7 +1845,7 @@ def inventory_report():
 # ==============================================================================
 @app.route('/report/inventory')
 @login_required
-@permission_required('view_reports')
+@permission_required('run_operational_reports')
 def report_inventory():
     """
     Generates a detailed report of CURRENT inventory status and valuation.
@@ -1754,7 +1878,7 @@ def report_inventory():
     )
 @app.route('/report/daily-sales')
 @login_required
-@permission_required('view_reports')
+@permission_required('run_operational_reports')
 def report_daily_sales():
     """
     Generates a report of all sales for a specific day, grouped by the user
@@ -1817,7 +1941,7 @@ def report_daily_sales():
     )
 @app.route('/report/feed-movement')
 @login_required
-@permission_required('view_reports')
+@permission_required('run_operational_reports')
 def report_feed_movement():
     """Generates a report on feed usage across all farm sections."""
     db = get_db()
@@ -1860,7 +1984,7 @@ def report_feed_movement():
 
 @app.route('/report/mortality')
 @login_required
-@permission_required('view_reports')
+@permission_required('run_operational_reports')
 def report_mortality():
     """Generates a report on mortality in the brooding section."""
     db = get_db()
@@ -1893,7 +2017,7 @@ def report_mortality():
 
 @app.route('/report/flock-movement')
 @login_required
-@permission_required('view_reports')
+@permission_required('run_operational_reports')
 def report_flock_movement():
     """Shows a historical view of all flocks, both active and completed."""
     db = get_db()
@@ -1920,7 +2044,7 @@ def report_flock_movement():
 @app.route('/inventory/item/add', methods=['POST'])
 @login_required
 @check_day_closed('date')
-@permission_required('edit_inventory')
+@permission_required('add_inventory_item')
 def add_inventory_item():
     """Handles creating a new inventory item type from the modal form."""
     try:
@@ -1960,7 +2084,7 @@ def add_inventory_item():
 @app.route('/inventory/stock/add', methods=['POST'])
 @login_required
 @check_day_closed('date')
-@permission_required('edit_inventory')
+@permission_required('add_inventory_stock')
 def add_inventory_stock():
     """Handles adding stock to an existing inventory item from the modal."""
     try:
@@ -1987,7 +2111,7 @@ def add_inventory_stock():
     return redirect(url_for('inventory_dashboard'))
 @app.route('/inventory/usage/log', methods=['POST'])
 @login_required
-@permission_required('edit_inventory')
+@permission_required('log_inventory_usage')
 @check_day_closed('log_date')
 def log_inventory_usage():
     """
@@ -2049,7 +2173,7 @@ def log_inventory_usage():
 # ==============================================================================
 @app.route('/poultry/eggs/log', methods=['POST'])
 @login_required
-@permission_required('edit_poultry')
+@permission_required('log_poultry_eggs')
 @check_day_closed('log_date')
 def add_egg_log():
     db = get_db()
@@ -2141,7 +2265,7 @@ def add_egg_log():
 @app.route('/poultry/flock/add', methods=['POST'])
 @login_required
 @check_day_closed('date')
-@permission_required('edit_poultry')
+@permission_required('add_poultry_flock')
 def add_flock_post():
     """Handles creating a new flock from the modal form."""
     try:
@@ -2175,7 +2299,7 @@ def add_flock_post():
     return redirect(url_for('poultry_dashboard'))
 @app.route('/poultry/flock/deactivate', methods=['POST'])
 @login_required
-@permission_required('edit_poultry') # Or a more specific permission
+@permission_required('deactivate_poultry_flock')
 def deactivate_flock():
     """Calculates the final profit/loss for a flock and sets it to inactive."""
     db = get_db()
@@ -2214,7 +2338,7 @@ def deactivate_flock():
     return redirect(url_for('poultry_dashboard'))
 @app.route('/inventory/item/update/<int:item_id>', methods=['POST'])
 @login_required
-@permission_required('edit_inventory')
+@permission_required('edit_inventory_item')
 def update_inventory_item(item_id):
     """
     Handles updating an existing inventory item's details.
@@ -2260,7 +2384,7 @@ def update_inventory_item(item_id):
     return redirect(url_for('inventory_dashboard'))
 @app.route('/inventory/item/delete/<int:item_id>', methods=['POST'])
 @login_required
-@permission_required('edit_inventory') # Can reuse the same permission
+@permission_required('delete_inventory_item')
 def delete_inventory_item(item_id):
     """
     Handles deleting an inventory item ONLY if it has no transaction history.
@@ -2290,7 +2414,7 @@ def delete_inventory_item(item_id):
 # ==============================================================================
 @app.route('/brooding')
 @login_required
-@permission_required('view_poultry') # Reuse existing permission
+@permission_required('view_brooding_dashboard') # Reuse existing permission
 def brooding_dashboard():
     """Displays the new Brooding Management dashboard."""
     db = get_db()
@@ -2324,7 +2448,7 @@ def brooding_dashboard():
 
 @app.route('/brooding/batch/add', methods=['POST'])
 @login_required
-@permission_required('edit_poultry')
+@permission_required('add_brooding_batch')
 @check_day_closed('arrival_date')
 def add_brooding_batch():
     """Adds a new batch of day-old chicks."""
@@ -2349,7 +2473,7 @@ def add_brooding_batch():
 
 @app.route('/brooding/log/mortality', methods=['POST'])
 @login_required
-@permission_required('edit_poultry')
+@permission_required('log_brooding_mortality')
 @check_day_closed('log_date')
 def log_brooding_mortality():
     """Logs daily mortality and updates the current chick count."""
@@ -2375,7 +2499,7 @@ def log_brooding_mortality():
 
 @app.route('/brooding/batch/transfer', methods=['POST'])
 @login_required
-@permission_required('edit_poultry')
+@permission_required('transfer_brooding_batch')
 def transfer_brooding_batch():
     db = get_db()
     try:
@@ -2412,7 +2536,7 @@ def transfer_brooding_batch():
 
 @app.route('/poultry/flock/log-mortality', methods=['POST'])
 @login_required
-@permission_required('edit_poultry')
+@permission_required('log_poultry_mortality')
 @check_day_closed('log_date')
 def log_flock_mortality():
     db = get_db()
@@ -2462,7 +2586,7 @@ def log_flock_mortality():
 # ==============================================================================
 @app.route('/water/product/add', methods=['POST'])
 @login_required
-@permission_required('edit_water')
+@permission_required('add_water_product')
 def add_water_product():
     """
     Handles creating a new water product type.
@@ -2504,7 +2628,7 @@ def add_water_product():
 
 @app.route('/water/production/log', methods=['POST'])
 @login_required
-@permission_required('edit_water')
+@permission_required('log_water_production')
 @check_day_closed('production_date')
 def add_water_production_log():
     """
@@ -2552,7 +2676,7 @@ def add_water_production_log():
 @app.route('/water/product/update/<int:product_id>', methods=['POST'])
 @login_required
 @check_day_closed('date')
-@permission_required('edit_water')
+@permission_required('edit_water_product')
 def update_water_product(product_id):
     """Handles updating an existing water product from the modal form."""
     try:
@@ -2580,7 +2704,7 @@ def update_water_product(product_id):
 
 @app.route('/water/production/calculate-cost', methods=['POST'])
 @login_required
-@permission_required('edit_water') # Or a more specific permission
+@permission_required('calculate_water_cost') # Or a more specific permission
 def calculate_water_cost():
     """
     Calculates the total cost and cost-per-unit for a specific water production run.
@@ -2703,7 +2827,7 @@ def contact_ledger(contact_id):
 @app.route('/contacts/edit/<int:contact_id>', methods=['GET'])
 @login_required
 @check_day_closed('date')
-@permission_required('edit_contacts')
+@permission_required('edit_contact')
 def edit_contact(contact_id):
     """Displays the form to edit an existing contact."""
     user = User.get_by_id(session['user_id'])
@@ -2721,7 +2845,7 @@ def edit_contact(contact_id):
 @app.route('/contacts/update/<int:contact_id>', methods=['POST'])
 @login_required
 @check_day_closed('date')
-@permission_required('edit_contacts')
+@permission_required('edit_contact')
 def update_contact(contact_id):
     """Handles updating an existing contact."""
     if request.method == 'POST':
@@ -2753,7 +2877,7 @@ def update_contact(contact_id):
 @app.route('/contacts/delete/<int:contact_id>', methods=['POST'])
 @login_required
 @check_day_closed('date')
-@permission_required('edit_contacts')
+@permission_required('delete_contact')
 def delete_contact(contact_id):
     """Handles deleting a contact."""
     # In a real app, you should check if this contact has transactions first.
@@ -2765,7 +2889,7 @@ def delete_contact(contact_id):
     return redirect(url_for('contacts_dashboard'))
 @app.route('/contacts/add', methods=['POST'])
 @login_required
-@permission_required('edit_contacts')
+@permission_required('add_contact')
 def add_contact():
     db = get_db()
     try:

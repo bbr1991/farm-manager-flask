@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+
 {% block title %}General Journal{% endblock %}
 
 {% block content %}
@@ -9,21 +10,34 @@
             <button class="btn btn-outline-secondary me-2" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
                 <i class="bi bi-funnel-fill"></i> Filter Journal
             </button>
+            {% if g.user and g.user.has_permission('add_manual_journal') %}
             <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newEntryModal">
                 <i class="bi bi-plus-circle-fill"></i> New Manual Entry
             </button>
+            {% endif %}
         </div>
     </div>
 
     <!-- Filter Form (Collapsible) -->
-    <div class="collapse" id="filterCollapse">
+    <div class="collapse {% if request.args.get('start_date') or request.args.get('end_date') or request.args.get('q') %}show{% endif %}" id="filterCollapse">
         <div class="card card-body mb-4 shadow-sm">
             <form method="GET" action="{{ url_for('general_journal') }}">
                 <div class="row g-3 align-items-end">
-                    <div class="col-md-3"><label class="form-label">Start Date</label><input type="date" class="form-control" name="start_date" value="{{ request.args.get('start_date', '') }}"></div>
-                    <div class="col-md-3"><label class="form-label">End Date</label><input type="date" class="form-control" name="end_date" value="{{ request.args.get('end_date', '') }}"></div>
-                    <div class="col-md-4"><label class="form-label">Search Description</label><input type="text" class="form-control" name="q" placeholder="e.g., Purchase of feed" value="{{ request.args.get('q', '') }}"></div>
-                    <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Apply Filter</button></div>
+                    <div class="col-md-3">
+                        <label for="filter_start_date" class="form-label">Start Date</label>
+                        <input type="date" class="form-control" id="filter_start_date" name="start_date" value="{{ request.args.get('start_date', '') }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="filter_end_date" class="form-label">End Date</label>
+                        <input type="date" class="form-control" id="filter_end_date" name="end_date" value="{{ request.args.get('end_date', '') }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="filter_q" class="form-label">Search Description</label>
+                        <input type="text" class="form-control" id="filter_q" name="q" placeholder="e.g., Purchase of feed" value="{{ request.args.get('q', '') }}">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">Apply Filter</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -34,7 +48,7 @@
         <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Journal Entries</h6></div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-hover">
+                <table class="table table-hover table-sm"> {# Added table-sm for compactness #}
                     <thead>
                         <tr>
                             <th>Date</th>
@@ -52,10 +66,17 @@
                             <td>{{ entry.description }}</td>
                             <td><a href="{{ url_for('account_ledger', account_id=entry.debit_account_id) }}">{{ entry.debit_account_name }}</a></td>
                             <td><a href="{{ url_for('account_ledger', account_id=entry.credit_account_id) }}">{{ entry.credit_account_name }}</a></td>
-                            <td class="text-end">₦{{ '{:,.2f}'.format(entry.amount) }}</td>
+                            <td class="text-end font-monospace">₦{{ '{:,.2f}'.format(entry.amount) }}</td>
                             <td class="text-center">
-                                {# In a real app, you might have a "Reverse Entry" button here #}
-                                <a href="{{ url_for('account_ledger', account_id=entry.debit_account_id) }}" class="btn btn-sm btn-outline-info">View</a>
+                                {# Added the Reversal Button here #}
+                                {% if g.user and g.user.has_permission('add_manual_journal') %}
+                                <form action="{{ url_for('reverse_journal_entry', entry_id=entry.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to reverse this entry (ID: {{ entry.id }})? This will create a new, opposing entry on today\'s date. You cannot undo this action.');">
+                                    <button type="submit" class="btn btn-warning btn-sm" title="Reverse Transaction">
+                                        <i class="bi bi-arrow-counterclockwise"></i> Reverse
+                                    </button>
+                                </form>
+                                {% endif %}
+                                <a href="{{ url_for('account_ledger', account_id=entry.debit_account_id) }}" class="btn btn-sm btn-outline-info ms-1">View Ledger</a>
                             </td>
                         </tr>
                         {% else %}
@@ -68,7 +89,7 @@
     </div>
 
     <!-- =================================================================== -->
-    <!-- MODAL FOR ADDING A NEW JOURNAL ENTRY -->
+    <!-- MODAL FOR ADDING A NEW JOURNAL ENTRY (Improved) -->
     <!-- =================================================================== -->
     <div class="modal fade" id="newEntryModal" tabindex="-1" aria-labelledby="newEntryModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
@@ -81,41 +102,57 @@
                     <form action="{{ url_for('add_journal_entry') }}" method="POST">
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <label for="transaction_date" class="form-label">Transaction Date</label>
-                                <input type="date" class="form-control" id="transaction_date" name="transaction_date" required>
+                                <label for="transaction_date_modal" class="form-label">Transaction Date</label>
+                                <input type="date" class="form-control" id="transaction_date_modal" name="transaction_date" required>
                             </div>
                             <div class="col-md-8">
-                                <label for="amount" class="form-label">Amount (₦)</label>
-                                <input type="number" class="form-control" id="amount" name="amount" step="0.01" required>
+                                <label for="amount_modal" class="form-label">Amount (₦)</label>
+                                <input type="number" class="form-control" id="amount_modal" name="amount" step="0.01" min="0.01" required>
                             </div>
                             <div class="col-12">
-                                <label for="description" class="form-label">Description</label>
-                                <textarea class="form-control" id="description" name="description" rows="2" required></textarea>
+                                <label for="description_modal" class="form-label">Description</label>
+                                <textarea class="form-control" id="description_modal" name="description" rows="2" required></textarea>
                             </div>
                             <div class="col-md-6">
-                                <label for="debit_account_id" class="form-label">Account to Debit</label>
-                                <p class="small text-muted mb-1">(Increase Asset/Expense, Decrease Liability/Equity/Income)</p>
-                                <select class="form-select" id="debit_account_id" name="debit_account_id" required>
+                                <label for="debit_account_id_modal" class="form-label">Account to Debit</label>
+                                <p class="small text-muted mb-1">(Increase Asset/Expense, Decrease Liability/Equity/Revenue)</p>
+                                <select class="form-select" id="debit_account_id_modal" name="debit_account_id" required>
                                     <option selected disabled value="">Choose account...</option>
+                                    {% set current_type = '' %}
                                     {% for account in chart_of_accounts %}
-                                    <option value="{{ account.id }}">{{ account.name }} ({{ account.type }})</option>
+                                        {% if account.type != current_type %}
+                                            {% if not loop.first %}</optgroup>{% endif %}
+                                            <optgroup label="{{ account.type }}">
+                                            {% set current_type = account.type %}
+                                        {% endif %}
+                                        <option value="{{ account.id }}">{{ account.code }} - {{ account.name }}</option>
                                     {% endfor %}
+                                    {% if chart_of_accounts %}</optgroup>{% endif %}
                                 </select>
                             </div>
                             <div class="col-md-6">
-                                <label for="credit_account_id" class="form-label">Account to Credit</label>
-                                <p class="small text-muted mb-1">(Decrease Asset/Expense, Increase Liability/Equity/Income)</p>
-                                <select class="form-select" id="credit_account_id" name="credit_account_id" required>
+                                <label for="credit_account_id_modal" class="form-label">Account to Credit</label>
+                                <p class="small text-muted mb-1">(Decrease Asset/Expense, Increase Liability/Equity/Revenue)</p>
+                                <select class="form-select" id="credit_account_id_modal" name="credit_account_id" required>
                                     <option selected disabled value="">Choose account...</option>
+                                    {% set current_type = '' %}
                                     {% for account in chart_of_accounts %}
-                                    <option value="{{ account.id }}">{{ account.name }} ({{ account.type }})</option>
+                                        {% if account.type != current_type %}
+                                            {% if not loop.first %}</optgroup>{% endif %}
+                                            <optgroup label="{{ account.type }}">
+                                            {% set current_type = account.type %}
+                                        {% endif %}
+                                        <option value="{{ account.id }}">{{ account.code }} - {{ account.name }}</option>
                                     {% endfor %}
+                                    {% if chart_of_accounts %}</optgroup>{% endif %}
                                 </select>
                             </div>
                         </div>
                         <hr class="my-4">
-                        <button class="btn btn-primary" type="submit">Save Journal Entry</button>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <div class="d-flex justify-content-end gap-2">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button class="btn btn-primary" type="submit">Save Journal Entry</button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -126,6 +163,11 @@
 {% block scripts %}
 <script>
     // Set default date for new entry modal to today
-    document.querySelector('#newEntryModal input[name="transaction_date"]').valueAsDate = new Date();
+    document.addEventListener('DOMContentLoaded', function() {
+        const transactionDateInput = document.getElementById('transaction_date_modal');
+        if (transactionDateInput) {
+            transactionDateInput.valueAsDate = new Date();
+        }
+    });
 </script>
 {% endblock %}
