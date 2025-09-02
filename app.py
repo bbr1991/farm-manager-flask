@@ -68,34 +68,18 @@ class User:
 
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password_hash, password)
-
+    
     def has_permission(self, required_permission):
-        # ===================== CORRECTED DEBUG CODE =====================
-        print(f"\n--- PERMISSION CHECK ---")
-        print(f"User checking: '{self.username}' (ID: {self.id})")
-        print(f"User's role is: '{self.role}'")
-        print(f"Permission required: '{required_permission}'")
-        # ================================================================
-
         if self.role == 'admin':
-            print("RESULT: Role is 'admin', access GRANTED.")
-            print(f"------------------------")
             return True
         
-        print("INFO: Role is not 'admin', checking the user_permissions table...")
         if self._permissions is None:
             db = get_db()
             perms_rows = db.execute("SELECT p.name FROM permissions p JOIN user_permissions up ON p.id = up.permission_id WHERE up.user_id = ?", (self.id,)).fetchall()
             self._permissions = {row['name'] for row in perms_rows}
         
-        has_perm = required_permission in self._permissions
-        if has_perm:
-            print(f"RESULT: User HAS the specific permission '{required_permission}'. Access GRANTED.")
-        else:
-            print(f"RESULT: User does NOT have the specific permission '{required_permission}'. Access DENIED.")
-        print(f"------------------------")
-        return has_perm
-
+        return required_permission in self._permissions
+    
     def reload_permissions(self):
         db = get_db()
         perms_rows = db.execute("SELECT p.name FROM permissions p JOIN user_permissions up ON p.id = up.permission_id WHERE up.user_id = ?", (self.id,)).fetchall()
