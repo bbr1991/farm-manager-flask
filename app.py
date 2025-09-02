@@ -866,12 +866,13 @@ def general_journal():
     entries = db.execute(sql, params).fetchall()
     
     return render_template(
-        'general_journal.html', 
-        user=g.user,
-        entries=entries,
-        search_query=search_query,
-        chart_of_accounts=chart_of_accounts # Pass the accounts list to the template
-    )
+    'general_journal.html', 
+    user=g.user,
+    entries=entries,
+    search_query=search_query,
+    chart_of_accounts=chart_of_accounts,
+    today_date=date.today().strftime('%Y-%m-%d') # <-- ADD THIS LINE
+)
 
 @app.route('/financials/ledger/<int:account_id>')
 @login_required
