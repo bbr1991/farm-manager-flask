@@ -16,3 +16,4 @@ __pycache__/
 # *.sqlite3
 farm_data.db
 ```4.  Save and close the `.gitignore` file.
+farm_data.db
