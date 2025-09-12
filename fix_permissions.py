@@ -2,8 +2,9 @@ import sqlite3
 import os
 
 # --- THIS IS THE COMPLETE, CORRECT LIST OF ALL PERMISSIONS ---
+# It includes permissions for every section of your application.
 ALL_PERMISSIONS = [
-    # Brooding & Poultry
+    # Livestock: Brooding & Poultry
     ('view_brooding_dashboard', 'Can view the brooding section dashboard'),
     ('add_brooding_batch', 'Can add new batches of day-old chicks'),
     ('log_brooding_mortality', 'Can log daily mortality for brooding batches'),
@@ -13,7 +14,8 @@ ALL_PERMISSIONS = [
     ('log_poultry_eggs', 'Can log daily egg collection and feed usage for flocks'),
     ('log_poultry_mortality', 'Can log mortality for laying flocks'),
     ('deactivate_poultry_flock', 'Can deactivate a flock and record its final sale price'),
-    # Operations
+    
+    # Operations: Inventory, Sales Packages, Water, Contacts
     ('view_inventory_dashboard', 'Can view the main inventory dashboard and stock levels'),
     ('add_inventory_item', 'Can add a completely new type of item to the inventory list'),
     ('add_inventory_stock', 'Can add quantity to an existing inventory item'),
@@ -33,7 +35,8 @@ ALL_PERMISSIONS = [
     ('edit_contact', 'Can edit an existing contact''s details'),
     ('delete_contact', 'Can delete a contact'),
     ('assign_contact_user', 'Can assign a sales user to a specific contact (Admin task)'),
-    # Finance & Admin
+    
+    # Finance & Admin: Bookkeeping, Data Entry, Reporting
     ('view_financial_center', 'Can view the main Financial Center dashboard'),
     ('view_chart_of_accounts', 'Can view the Chart of Accounts'),
     ('add_chart_of_accounts', 'Can add a new account to the Chart of Accounts'),
@@ -48,6 +51,7 @@ ALL_PERMISSIONS = [
     ('run_operational_reports', 'Can generate sales, inventory, and production reports'),
     ('close_day', 'Can perform the daily close procedure'),
     ('close_year', 'Can perform the year-end close procedure'),
+    
     # Core User/Admin Permissions
     ('view_admin_panel', 'Can view the admin dashboard'),
     ('add_users', 'Can create new users'),
@@ -56,27 +60,38 @@ ALL_PERMISSIONS = [
 ]
 
 def fix_permissions():
+    # This finds the farm_data.db file in the same directory as the script
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'farm_data.db')
     print(f"Connecting to database at: {db_path}")
     
+    con = None  # Initialize con to None
     try:
         con = sqlite3.connect(db_path)
         cur = con.cursor()
         
-        # Use INSERT OR IGNORE to safely add only the missing permissions
+        # Get the count before we make changes
+        count_before = cur.execute("SELECT COUNT(*) FROM permissions").fetchone()[0]
+        print(f"Permissions table currently has {count_before} rows.")
+        
+        # Use INSERT OR IGNORE to safely add only the permissions that are missing
         cur.executemany("INSERT OR IGNORE INTO permissions (name, description) VALUES (?, ?)", ALL_PERMISSIONS)
         con.commit()
         
         # Verification step
         count_after = cur.execute("SELECT COUNT(*) FROM permissions").fetchone()[0]
+        rows_added = count_after - count_before
+        print(f"Added {rows_added} new permissions.")
         print(f"Success! The 'permissions' table now contains {count_after} total rows.")
         
     except sqlite3.Error as e:
-        print(f"An error occurred: {e}")
+        print(f"A database error occurred: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
     finally:
         if con:
             con.close()
             print("Database connection closed.")
 
+# This makes the script run when you execute it from the command line
 if __name__ == "__main__":
     fix_permissions()
