@@ -680,6 +680,8 @@ def water_dashboard():
         water_products=water_products, # <-- THE MISSING PIECE
         today_date=date.today().strftime('%Y-%m-%d')
     )
+# In app.py, REPLACE your existing contacts_dashboard function with this one
+
 @app.route('/contacts')
 @login_required
 @permission_required('view_contacts_dashboard')
@@ -687,8 +689,6 @@ def contacts_dashboard():
     db = get_db()
     search_query = request.args.get('q', '')
 
-    # --- THIS IS THE MODIFIED QUERY ---
-    # It now joins with the users table to get the assigned username
     base_sql = """
         SELECT
             c.id, c.name, c.type, c.phone, c.email, c.assigned_user_id,
@@ -708,9 +708,10 @@ def contacts_dashboard():
         where_clauses.append("c.name LIKE ?")
         params.append(f"%{search_query}%")
 
-    # If user is NOT an admin, filter to see only their assigned contacts
+    # If user is NOT an admin, filter to see ONLY their assigned contacts
     if g.user.role != 'admin':
-        where_clauses.append("(c.assigned_user_id = ? OR c.assigned_user_id IS NULL)") # Show assigned AND unassigned
+        # <-- THIS LINE IS CHANGED. It no longer includes "OR IS NULL".
+        where_clauses.append("c.assigned_user_id = ?") 
         params.append(g.user.id)
     
     if where_clauses:
@@ -719,14 +720,12 @@ def contacts_dashboard():
     base_sql += " ORDER BY c.name ASC"
     contacts_list = db.execute(base_sql, params).fetchall()
     
-    # --- NEW: Fetch users for the assignment modal (for admins) ---
     assignable_users = []
     if g.user.role == 'admin':
         assignable_users = db.execute(
             "SELECT id, username FROM users WHERE role = 'user' ORDER BY username"
         ).fetchall()
 
-    # ... the rest of the function (KPI calculations) remains the same ...
     accounts_receivable = 0
     accounts_payable = 0
     for contact in contacts_list:
@@ -746,9 +745,8 @@ def contacts_dashboard():
         user=g.user,
         stats=stats,
         contacts_list=contacts_list,
-        assignable_users=assignable_users  # Pass the new list to the template
+        assignable_users=assignable_users
     )
-# In app.py, add this new route
 @app.route('/contacts/assign/<int:contact_id>', methods=['POST'])
 @login_required
 @permission_required('assign_contact_user') # Only users with this permission can assign
@@ -1091,33 +1089,19 @@ def customer_transaction():
     
     return render_template('customer_transaction.html', user=g.user, customers=customers, asset_accounts=asset_accounts, inventory_items=packages_for_sale, today_date=date.today().strftime('%Y-%m-%d'))
 
+# In app.py, replace your old new_sale function with this one
+
 @app.route('/sales/new')
 @login_required
-@permission_required('record_new_sale')
+@permission_required('record_new_sale') # Using the new, correct permission name
 def new_sale():
-    """Diagnostic version to find the empty dropdown problem."""
+    """
+    Displays the Point of Sale page. It fetches all sales packages that are currently in stock
+    and the asset accounts available for receiving payment.
+    """
     db = get_db()
-    print("\n--- RUNNING DIAGNOSTIC FOR /sales/new ---")
-
-    # Test 1: Do any sales packages exist at all?
-    all_packages = db.execute("SELECT * FROM sales_packages").fetchall()
-    print(f"Found {len(all_packages)} total sales package(s) defined.")
-    for pkg in all_packages:
-        print(f"  - Package: ID={pkg['id']}, Name='{pkg['package_name']}', BaseItemID={pkg['base_inventory_item_id']}")
-
-    # Test 2: Let's check the inventory status for those base items
-    print("\nChecking inventory status for base items...")
-    base_item_ids = {pkg['base_inventory_item_id'] for pkg in all_packages}
-    if base_item_ids:
-        # Create the correct number of placeholders for the query
-        placeholders = ', '.join('?' for _ in base_item_ids)
-        inventory_status = db.execute(f"SELECT id, name, quantity FROM inventory WHERE id IN ({placeholders})", list(base_item_ids)).fetchall()
-        for item in inventory_status:
-            print(f"  - Inventory: ID={item['id']}, Name='{item['name']}', Quantity on Hand={item['quantity']}")
-    else:
-        print("  - No base items to check.")
-        
-    # This is the real query we are debugging
+    
+    # This single, efficient query gets all sellable packages that are in stock.
     packages_for_sale = db.execute("""
         SELECT sp.*, i.name as base_item_name, i.quantity as stock_on_hand
         FROM sales_packages sp
@@ -1125,10 +1109,8 @@ def new_sale():
         WHERE i.quantity >= sp.quantity_per_package
     """).fetchall()
     
-    print(f"\nFINAL RESULT: The query found {len(packages_for_sale)} package(s) available for sale.")
-    print("-----------------------------------------\n")
-
-    # The rest of the function remains the same
+    # Determine which payment accounts to show. If the user has a dedicated
+    # cash drawer, only show that. Otherwise, show all active asset accounts.
     if g.user.cash_account_id:
         asset_accounts = db.execute("SELECT * FROM accounts WHERE id = ?", (g.user.cash_account_id,)).fetchall()
     else:
@@ -1138,9 +1120,11 @@ def new_sale():
         'add_sale.html', 
         user=g.user, 
         inventory_items=packages_for_sale, 
-        asset_accounts=asset_accounts
+        asset_accounts=asset_accounts,
+        today_date=date.today().strftime('%Y-%m-%d') # Add today's date for the form
     )
 @app.route('/sales/add', methods=['POST'])
+@login_required
 @permission_required('record_new_sale')
 @check_day_closed('date')
 def add_sale_post():
@@ -2573,12 +2557,8 @@ def log_flock_mortality():
 @login_required
 @permission_required('add_water_product')
 def add_water_product():
-    """
-    Handles creating a new water product type.
-    FINAL CORRECTED LOGIC: Also creates a corresponding, sellable item in the 
-    main inventory table. This is the crucial link.
-    """
     db = get_db()
+    cursor = db.cursor()
     try:
         name = request.form.get('name')
         price = float(request.form.get('price', 0))
@@ -2586,21 +2566,29 @@ def add_water_product():
         if not name or price <= 0:
             flash('Product Name and a positive Price are required.', 'warning')
             return redirect(url_for('water_dashboard'))
-
-        # --- DATABASE TRANSACTION ---
-        # 1. Create the product definition in the `water_products` table.
-        cursor = db.cursor()
-        cursor.execute("INSERT INTO water_products (name, price, quantity) VALUES (?, ?, 0)", (name, price))
         
-        # 2. CRITICAL STEP: Create the matching item in the main `inventory` table.
-        #    This makes it exist so it can be sold. The quantity starts at 0.
-        db.execute("""
+        # --- DATABASE TRANSACTION ---
+        # 1. Create the inventory item FIRST to get its ID
+        cursor.execute("""
             INSERT INTO inventory (name, category, quantity, unit, sale_price, unit_cost)
             VALUES (?, 'Finished Goods', 0, 'Unit', ?, 0)
         """, (name, price))
+        new_inventory_item_id = cursor.lastrowid
+        
+        # 2. Create the water product and STORE the inventory ID
+        cursor.execute("""
+            INSERT INTO water_products (name, price, quantity, inventory_item_id) 
+            VALUES (?, ?, 0, ?)
+        """, (name, price, new_inventory_item_id))
+        
+        # 3. Create the sales package link
+        cursor.execute("""
+            INSERT INTO sales_packages (package_name, base_inventory_item_id, quantity_per_package, sale_price)
+            VALUES (?, ?, 1, ?)
+        """, (name, new_inventory_item_id, price))
         
         db.commit()
-        flash(f"New water product '{name}' added and linked to inventory for sales!", 'success')
+        flash(f"New water product '{name}' fully created and linked for sales!", 'success')
 
     except sqlite3.IntegrityError:
         db.rollback()
@@ -2610,17 +2598,11 @@ def add_water_product():
         flash(f"An unexpected error occurred: {e}", 'danger')
 
     return redirect(url_for('water_dashboard'))
-
 @app.route('/water/production/log', methods=['POST'])
 @login_required
 @permission_required('log_water_production')
 @check_day_closed('production_date')
 def add_water_production_log():
-    """
-    Handles logging new water production.
-    FINAL CORRECTED LOGIC: Updates stock in BOTH the `water_products` table (for KPIs)
-    and the `inventory` table (for sales).
-    """
     db = get_db()
     try:
         production_date = request.form.get('production_date')
@@ -2632,6 +2614,14 @@ def add_water_production_log():
             flash('Date, Product, and a positive Quantity are required.', 'warning')
             return redirect(url_for('water_dashboard'))
 
+        # --- Get the LINKED inventory_item_id from the water_products table ---
+        product_info = db.execute("SELECT inventory_item_id FROM water_products WHERE id = ?", (product_id,)).fetchone()
+        if not product_info or not product_info['inventory_item_id']:
+            flash("CRITICAL ERROR: This water product is not linked to an inventory item. Please delete and recreate it.", "danger")
+            return redirect(url_for('water_dashboard'))
+        
+        inventory_id_to_update = product_info['inventory_item_id']
+
         # --- DATABASE TRANSACTION ---
         # 1. Add to the production log for history.
         db.execute("""
@@ -2642,13 +2632,9 @@ def add_water_production_log():
         # 2. Update the 'quantity' in the `water_products` table for the dashboard KPIs.
         db.execute("UPDATE water_products SET quantity = quantity + ? WHERE id = ?", (quantity_produced, product_id))
 
-        # 3. CRITICAL STEP: Find the product's name and UPDATE THE MAIN INVENTORY STOCK.
-        product_info = db.execute("SELECT name FROM water_products WHERE id = ?", (product_id,)).fetchone()
-        if product_info:
-            inventory_item_name = product_info['name']
-            # This is the line that makes the items available for sale.
-            db.execute("UPDATE inventory SET quantity = quantity + ? WHERE name = ?", 
-                       (quantity_produced, inventory_item_name))
+        # 3. CRITICAL FIX: Update the main inventory stock using the CORRECT ID.
+        db.execute("UPDATE inventory SET quantity = quantity + ? WHERE id = ?", 
+                   (quantity_produced, inventory_id_to_update))
         
         db.commit()
         flash('Water production logged and stock updated successfully!', 'success')
@@ -2660,10 +2646,10 @@ def add_water_production_log():
     return redirect(url_for('water_dashboard'))
 @app.route('/water/product/update/<int:product_id>', methods=['POST'])
 @login_required
-@check_day_closed('date')
 @permission_required('edit_water_product')
 def update_water_product(product_id):
-    """Handles updating an existing water product from the modal form."""
+    """Handles updating a water product and keeps prices in sync across all tables."""
+    db = get_db()
     try:
         name = request.form.get('name')
         price = float(request.form.get('price', 0))
@@ -2671,36 +2657,50 @@ def update_water_product(product_id):
         if not name or price <= 0:
             flash('Product Name and a positive Price are required.', 'warning')
             return redirect(url_for('water_dashboard'))
+        
+        # Get the original name in case it was changed
+        original_product = db.execute("SELECT name FROM water_products WHERE id = ?", (product_id,)).fetchone()
+        if not original_product:
+            flash("Product not found.", "danger")
+            return redirect(url_for('water_dashboard'))
 
-        db = get_db()
+        # --- DATABASE TRANSACTION ---
+        # 1. Update the water_products table
         db.execute("UPDATE water_products SET name = ?, price = ? WHERE id = ?", 
                    (name, price, product_id))
+        
+        # 2. Update the inventory table
+        db.execute("UPDATE inventory SET name = ?, sale_price = ? WHERE name = ?", 
+                   (name, price, original_product['name']))
+                   
+        # 3. Update the sales_packages table
+        db.execute("UPDATE sales_packages SET package_name = ?, sale_price = ? WHERE package_name = ?", 
+                   (name, price, original_product['name']))
+        
         db.commit()
-
-        flash(f"Product '{name}' updated successfully!", 'success')
+        flash(f"Product '{name}' updated successfully across all systems.", 'success')
 
     except (ValueError, TypeError) as e:
+        db.rollback()
         flash(f"Invalid price provided. Please enter a valid number. Error: {e}", 'danger')
     except Exception as e:
+        db.rollback()
         flash(f"An unexpected error occurred: {e}", 'danger')
 
     return redirect(url_for('water_dashboard'))
-# Add this new route to app.py in Section 14
+# In app.py, REPLACE the calculate_water_cost function
 
 @app.route('/water/production/calculate-cost', methods=['POST'])
 @login_required
-@permission_required('calculate_water_cost') # Or a more specific permission
+@permission_required('calculate_water_cost')
 def calculate_water_cost():
-    """
-    Calculates the total cost and cost-per-unit for a specific water production run.
-    """
     db = get_db()
     try:
         production_log_id = int(request.form.get('production_log_id'))
 
-        # Get the production log details, especially the quantity produced
+        # Get the production log details
         prod_log = db.execute(
-            "SELECT quantity_produced FROM water_production_log WHERE id = ?",
+            "SELECT quantity_produced, production_labor_cost, sales_commission FROM water_production_log WHERE id = ?",
             (production_log_id,)
         ).fetchone()
 
@@ -2709,16 +2709,23 @@ def calculate_water_cost():
             return redirect(url_for('water_dashboard'))
 
         # --- CALCULATE TOTAL COSTS ---
-        # Sum the cost of all inventory used by this specific production run
-        cost_row = db.execute(
+        # 1. Sum the cost of materials used
+        material_cost_row = db.execute(
             "SELECT SUM(cost_of_usage) as total FROM inventory_log WHERE water_production_log_id = ?",
             (production_log_id,)
         ).fetchone()
-        total_material_cost = cost_row['total'] if cost_row and cost_row['total'] else 0
+        total_material_cost = material_cost_row['total'] if material_cost_row and material_cost_row['total'] else 0
+        
+        # 2. Get the labor and commission costs from the log itself
+        total_labor_cost = prod_log['production_labor_cost'] or 0
+        total_commission_cost = prod_log['sales_commission'] or 0
+        
+        # 3. Calculate the grand total cost
+        grand_total_cost = total_material_cost + total_labor_cost + total_commission_cost
 
         # --- CALCULATE COST PER UNIT ---
         quantity_produced = prod_log['quantity_produced']
-        cost_per_unit = total_material_cost / quantity_produced if quantity_produced > 0 else 0
+        cost_per_unit = grand_total_cost / quantity_produced if quantity_produced > 0 else 0
 
         # --- UPDATE THE WATER PRODUCTION LOG RECORD ---
         db.execute("""
@@ -2726,14 +2733,127 @@ def calculate_water_cost():
                 total_cost = ?, 
                 cost_per_unit = ?
             WHERE id = ?
-        """, (total_material_cost, cost_per_unit, production_log_id))
+        """, (grand_total_cost, cost_per_unit, production_log_id))
         db.commit()
 
-        flash(f"Costs calculated for production run. Cost per unit: ₦{cost_per_unit:,.2f}", "success")
+        flash(f"Costs finalized for production run. Total Cost: ₦{grand_total_cost:,.2f}, Cost per unit: ₦{cost_per_unit:,.2f}", "success")
     
     except Exception as e:
         db.rollback()
         flash(f"An error occurred while calculating costs: {e}", "danger")
+        
+    return redirect(url_for('water_dashboard'))
+@app.route('/water/production/log/edit/<int:log_id>', methods=['POST'])
+@login_required
+@permission_required('edit_production_log')
+def edit_production_log(log_id):
+    db = get_db()
+    try:
+        # Get the original log entry to find out the old quantity
+        original_log = db.execute("SELECT * FROM water_production_log WHERE id = ?", (log_id,)).fetchone()
+        if not original_log:
+            flash("Production log not found.", "danger")
+            return redirect(url_for('water_dashboard'))
+        
+        original_qty = original_log['quantity_produced']
+        original_product_info = db.execute("SELECT inventory_item_id FROM water_products WHERE id = ?", (original_log['product_id'],)).fetchone()
+        
+        # Get the new data from the form
+        new_date = request.form.get('production_date')
+        new_product_id = int(request.form.get('product_id'))
+        new_qty = int(request.form.get('quantity_produced'))
+        new_notes = request.form.get('notes')
+        
+        # --- DATABASE TRANSACTION ---
+        
+        # 1. Revert the original inventory addition
+        if original_product_info and original_product_info['inventory_item_id']:
+            db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", 
+                       (original_qty, original_product_info['inventory_item_id']))
+        
+        # 2. Add the new inventory quantity
+        new_product_info = db.execute("SELECT inventory_item_id FROM water_products WHERE id = ?", (new_product_id,)).fetchone()
+        if new_product_info and new_product_info['inventory_item_id']:
+            db.execute("UPDATE inventory SET quantity = quantity + ? WHERE id = ?", 
+                       (new_qty, new_product_info['inventory_item_id']))
+        
+        # 3. Update the production log itself
+        db.execute("""
+            UPDATE water_production_log SET
+                production_date = ?, product_id = ?, quantity_produced = ?, notes = ?
+            WHERE id = ?
+        """, (new_date, new_product_id, new_qty, new_notes, log_id))
+        
+        db.commit()
+        flash("Production log updated successfully and inventory adjusted.", "success")
+
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred: {e}", "danger")
+        
+    return redirect(url_for('water_dashboard'))
+
+
+@app.route('/water/production/log/delete/<int:log_id>', methods=['POST'])
+@login_required
+@permission_required('edit_production_log')
+def delete_production_log(log_id):
+    db = get_db()
+    try:
+        # Get the log entry to find out what to revert
+        log_to_delete = db.execute("SELECT * FROM water_production_log WHERE id = ?", (log_id,)).fetchone()
+        if not log_to_delete:
+            flash("Production log not found.", "danger")
+            return redirect(url_for('water_dashboard'))
+        
+        qty_to_remove = log_to_delete['quantity_produced']
+        product_info = db.execute("SELECT inventory_item_id FROM water_products WHERE id = ?", (log_to_delete['product_id'],)).fetchone()
+
+        # --- DATABASE TRANSACTION ---
+
+        # 1. Remove the quantity from the main inventory
+        if product_info and product_info['inventory_item_id']:
+            db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", 
+                       (qty_to_remove, product_info['inventory_item_id']))
+        
+        # 2. Delete the production log record
+        db.execute("DELETE FROM water_production_log WHERE id = ?", (log_id,))
+
+        db.commit()
+        flash("Production log deleted and inventory stock reversed.", "success")
+        
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred: {e}", "danger")
+        
+    return redirect(url_for('water_dashboard'))
+# In app.py, add this new route
+
+@app.route('/water/production/other-costs/log', methods=['POST'])
+@login_required
+# @permission_required('log_other_costs') # You can create a new permission for this
+def log_other_water_costs():
+    db = get_db()
+    try:
+        log_id = int(request.form.get('production_log_id'))
+        labor_cost = float(request.form.get('production_labor_cost', 0))
+        commission_cost = float(request.form.get('sales_commission', 0))
+        
+        # Use an UPDATE statement that adds to any existing value
+        db.execute("""
+            UPDATE water_production_log 
+            SET 
+                production_labor_cost = production_labor_cost + ?,
+                sales_commission = sales_commission + ?
+            WHERE id = ?
+        """, (labor_cost, commission_cost, log_id))
+        
+        db.commit()
+        flash("Labor and commission costs logged successfully.", "success")
+        
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred while logging costs: {e}", "danger")
         
     return redirect(url_for('water_dashboard'))
 # ==============================================================================
@@ -2872,6 +2992,8 @@ def delete_contact(contact_id):
     conn.close()
     flash("Contact successfully deleted.", "success")
     return redirect(url_for('contacts_dashboard'))
+# In app.py, REPLACE your existing add_contact function with this one
+
 @app.route('/contacts/add', methods=['POST'])
 @login_required
 @permission_required('add_contact')
@@ -2888,44 +3010,38 @@ def add_contact():
             return redirect(url_for('contacts_dashboard'))
 
         new_account_id = None
-        # --- NEW, MORE ROBUST LOGIC ---
+        # ... (your existing logic for creating the A/R account is perfect) ...
         if contact_type == 'Customer':
-            # 1. Find the parent "Accounts Receivable" account
             parent_ar_acc = db.execute("SELECT code FROM accounts WHERE name = 'Accounts Receivable'").fetchone()
             if not parent_ar_acc:
                 raise Exception("CRITICAL: Parent 'Accounts Receivable' account not found.")
             parent_code = parent_ar_acc['code']
-            
-            # 2. Find all existing sub-accounts for A/R
-            # The pattern for the LIKE clause is passed as a parameter.
             like_pattern = f"{parent_code}.%"
             sub_accounts = db.execute("SELECT code FROM accounts WHERE code LIKE ?", (like_pattern,)).fetchall()
-
-            # 3. Find the highest existing sub-account number numerically
             highest_sub_num = 0
             for acc in sub_accounts:
                 try:
-                    # Split the code (e.g., "1200.01") and get the part after the dot
                     sub_num = int(acc['code'].split('.')[1])
                     if sub_num > highest_sub_num:
                         highest_sub_num = sub_num
                 except (IndexError, ValueError):
-                    # Ignore any codes that don't match the "parent.sub" format
                     continue
-
-            # 4. Create the new code by adding 1 to the highest found number
             new_sub_num = highest_sub_num + 1
-            new_code = f"{parent_code}.{new_sub_num:02d}" # Formats as "1200.01", "1200.02", etc.
+            new_code = f"{parent_code}.{new_sub_num:02d}"
             account_name = f"A/R - {name}"
-
-            # 5. Insert the new account
             cursor = db.cursor()
             cursor.execute("INSERT INTO accounts (code, name, type) VALUES (?, ?, 'Asset')", (new_code, account_name))
             new_account_id = cursor.lastrowid
 
-        # 6. Insert the contact and link their new account_id
-        db.execute("INSERT INTO contacts (name, type, phone, email, account_id) VALUES (?, ?, ?, ?, ?)",
-                     (name, contact_type, phone, email, new_account_id))
+        # --- THIS IS THE NEW LOGIC TO AUTO-ASSIGN ---
+        assigned_id = None
+        if g.user.role != 'admin':
+            assigned_id = g.user.id
+        # --- END OF NEW LOGIC ---
+
+        # The INSERT statement now includes the assigned_user_id
+        db.execute("INSERT INTO contacts (name, type, phone, email, account_id, assigned_user_id) VALUES (?, ?, ?, ?, ?, ?)",
+                     (name, contact_type, phone, email, new_account_id, assigned_id))
         db.commit()
         flash(f"Contact '{name}' added successfully!", "success")
 

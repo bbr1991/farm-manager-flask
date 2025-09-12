@@ -5,17 +5,24 @@
 {% block content %}
 <div class="container-fluid px-0">
     <!-- Page Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="mb-0">Contacts Management</h2>
-        <div class="d-flex gap-2">
-            {% if g.user and g.user.has_permission('edit_contacts') %}
-            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addContactModal">
-                <i class="bi bi-person-plus-fill me-1"></i> Add New Contact
-            </button>
-            {% endif %}
-        </div>
-    </div>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">Contacts Management</h2>
+    <div class="d-flex gap-2">
+        <!-- THIS IS THE NEW BUTTON -->
+        {% if g.user.has_permission('record_customer_transaction') %}
+        <a href="{{ url_for('customer_transaction') }}" class="btn btn-success">
+            <i class="bi bi-cash-coin me-1"></i> Customer Transaction
+        </a>
+        {% endif %}
+        <!-- END OF NEW BUTTON -->
 
+        {% if g.user and g.user.has_permission('add_contact') %}
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addContactModal">
+            <i class="bi bi-person-plus-fill me-1"></i> Add New Contact
+        </button>
+        {% endif %}
+    </div>
+</div>
     <!-- KPI Cards -->
     <div class="row g-4 mb-4">
         <div class="col-md-4">
