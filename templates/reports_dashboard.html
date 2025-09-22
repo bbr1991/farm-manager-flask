@@ -1,143 +1,142 @@
 {% extends "base.html" %}
 {% block title %}Reporting Center{% endblock %}
 
-{% block content %}
-    <!-- Page Header -->
-    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2"><i class="bi bi-graph-up-arrow me-2"></i>Reporting Center</h1>
-        <p class="text-muted mb-0">Select a report below to view detailed analytics</p>
-    </div>
+{% block head_styles %}
+<style>
+    /* Optional styles for a slightly nicer look on the cards */
+    .report-card { transition: all 0.2s ease-in-out; }
+    .report-card:hover { transform: translateY(-5px); box-shadow: 0 0.5rem 1rem rgba(0,0,0,.15)!important; }
+    .report-card .avatar-sm { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; }
+</style>
+{% endblock %}
 
-    <!-- This is the main grid row that will contain ALL report cards -->
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2"><i class="bi bi-collection-fill me-2"></i>Reports Center</h1>
+    </div>
+    <p class="text-muted">Select a report to generate insights into your farm's performance.</p>
+
+    <!-- Financial Reports Section -->
+    <h3 class="h4 mb-3 mt-4">Financial Reports</h3>
     <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-        
-        <!-- Card 1: Profit & Loss -->
+        {% if g.user.has_permission('run_financial_reports') %}
         <div class="col">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm report-card">
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title text-primary"><i class="bi bi-file-earmark-bar-graph-fill me-2"></i>Profit & Loss</h5>
                     <p class="card-text small">View total revenue, expenses, and net profit for a specific period.</p>
-                    <div class="mt-auto text-end">
-                        <a href="{{ url_for('report_profit_loss') }}" class="btn btn-primary">Generate Report</a>
-                    </div>
+                    <div class="mt-auto text-end"><a href="{{ url_for('report_profit_loss') }}" class="btn btn-primary">Generate Report</a></div>
                 </div>
             </div>
         </div>
-
-        <!-- Card 2: Balance Sheet -->
         <div class="col">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm report-card">
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title text-primary"><i class="bi bi-journal-check me-2"></i>Balance Sheet</h5>
                     <p class="card-text small">A snapshot of your farm's assets, liabilities, and equity on a given date.</p>
-                    <div class="mt-auto text-end">
-                        <a href="{{ url_for('report_balance_sheet') }}" class="btn btn-primary">Generate Report</a>
-                    </div>
+                    <div class="mt-auto text-end"><a href="{{ url_for('report_balance_sheet') }}" class="btn btn-primary">Generate Report</a></div>
                 </div>
             </div>
         </div>
-
-        <!-- Card 3: Trial Balance -->
         <div class="col">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm report-card">
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title text-primary"><i class="bi bi-columns-gap me-2"></i>Trial Balance</h5>
                     <p class="card-text small">View all account balances to ensure debits equal credits.</p>
-                    <div class="mt-auto text-end">
-                        <a href="{{ url_for('report_trial_balance') }}" class="btn btn-primary">Generate Report</a>
-                    </div>
+                    <div class="mt-auto text-end"><a href="{{ url_for('report_trial_balance') }}" class="btn btn-primary">Generate Report</a></div>
                 </div>
             </div>
         </div>
+        {% endif %}
+    </div>
+    
+    <hr class="my-4">
 
-        <!-- Card 4: Daily Sales by User -->
+    <!-- Operational Reports Section -->
+    <h3 class="h4 mb-3">Operational Reports</h3>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        
+        <!-- NEW BROODING REPORT CARD - uses its own permission -->
+        {% if g.user.has_permission('run_brooding_report') %}
         <div class="col">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm report-card">
                 <div class="card-body d-flex flex-column">
-                    <h5 class="card-title text-success"><i class="bi bi-person-check-fill me-2"></i>Daily Sales by User</h5>
-                    <p class="card-text small">Summary of sales for a specific day, grouped by the cashier who made the sale.</p>
-                    <div class="mt-auto text-end">
-                        <a href="{{ url_for('report_daily_sales') }}" class="btn btn-success">Generate Report</a>
-                    </div>
+                    <h5 class="card-title text-warning"><i class="bi bi-egg me-2"></i>Brooding Report</h5>
+                    <p class="card-text small">Analyze mortality rates and costs for each brooding batch.</p>
+                    <div class="mt-auto text-end"><a href="{{ url_for('report_brooding') }}" class="btn btn-warning">Generate Report</a></div>
                 </div>
             </div>
         </div>
-        
-        <!-- Card 5: Feed Movement -->
+        {% endif %}
+
+        <!-- ALL OTHER OPERATIONAL REPORTS -->
+        {% if g.user.has_permission('run_operational_reports') %}
         <div class="col">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm report-card">
+                <div class="card-body d-flex flex-column">
+                    <h5 class="card-title text-success"><i class="bi bi-person-check-fill me-2"></i>Daily Sales</h5>
+                    <p class="card-text small">Summary of sales for a specific day, grouped by cashier.</p>
+                    <div class="mt-auto text-end"><a href="{{ url_for('report_daily_sales') }}" class="btn btn-success">Generate Report</a></div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100 shadow-sm report-card">
+                <div class="card-body d-flex flex-column">
+                    <h5 class="card-title text-info"><i class="bi bi-archive-fill me-2"></i>Inventory Valuation</h5>
+                    <p class="card-text small">Snapshot of current stock levels and their financial value.</p>
+                    <div class="mt-auto text-end"><a href="{{ url_for('report_inventory') }}" class="btn btn-info">Generate Report</a></div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100 shadow-sm report-card">
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title text-primary"><i class="bi bi-truck me-2"></i>Feed Movement</h5>
-                    <p class="card-text small">Track all feed usage across the farm, showing where it was used and the total cost.</p>
-                    <div class="mt-auto text-end">
-                        <a href="{{ url_for('report_feed_movement') }}" class="btn btn-primary">Generate Report</a>
-                    </div>
+                    <p class="card-text small">Track all feed usage across the farm, showing where it was used.</p>
+                    <div class="mt-auto text-end"><a href="{{ url_for('report_feed_movement') }}" class="btn btn-primary">Generate Report</a></div>
                 </div>
             </div>
         </div>
-
-        <!-- Card 6: Mortality Report -->
         <div class="col">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm report-card">
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title text-danger"><i class="bi bi-clipboard2-pulse-fill me-2"></i>Mortality Report</h5>
-                    <p class="card-text small">Detailed log of mortalities recorded in the brooding section for a selected period.</p>
-                    <div class="mt-auto text-end">
-                        <a href="{{ url_for('report_mortality') }}" class="btn btn-danger">Generate Report</a>
-                    </div>
+                    <p class="card-text small">Detailed log of mortalities recorded in the brooding section.</p>
+                    <div class="mt-auto text-end"><a href="{{ url_for('report_mortality') }}" class="btn btn-danger">Generate Report</a></div>
                 </div>
             </div>
         </div>
-
-        <!-- Card 7: Flock Movement -->
         <div class="col">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm report-card">
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title text-success"><i class="bi bi-people-fill me-2"></i>Flock Movement</h5>
-                    <p class="card-text small">Complete history of all poultry flocks, both active and inactive, with their final profitability.</p>
-                    <div class="mt-auto text-end">
-                        <a href="{{ url_for('report_flock_movement') }}" class="btn btn-success">Generate Report</a>
-                    </div>
+                    <p class="card-text small">Complete history of all poultry flocks with their final profitability.</p>
+                    <div class="mt-auto text-end"><a href="{{ url_for('report_flock_movement') }}" class="btn btn-success">Generate Report</a></div>
                 </div>
             </div>
         </div>
-
-        <!-- Card 8: Egg Collection -->
         <div class="col">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm report-card">
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title text-success"><i class="bi bi-egg-fill me-2"></i>Egg Collection</h5>
                     <p class="card-text small">Analyze daily and total egg collection for a specific period.</p>
-                    <div class="mt-auto text-end">
-                        <a href="{{ url_for('report_eggs') }}" class="btn btn-success">Generate Report</a>
-                    </div>
+                    <div class="mt-auto text-end"><a href="{{ url_for('report_eggs') }}" class="btn btn-success">Generate Report</a></div>
                 </div>
             </div>
         </div>
-
-        <!-- Card 9: Water Production -->
         <div class="col">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm report-card">
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title text-success"><i class="bi bi-droplet-fill me-2"></i>Water Production</h5>
                     <p class="card-text small">Track water production volumes over a selected date range.</p>
-                    <div class="mt-auto text-end">
-                        <a href="{{ url_for('report_water') }}" class="btn btn-success">Generate Report</a>
-                    </div>
+                    <div class="mt-auto text-end"><a href="{{ url_for('report_water') }}" class="btn btn-success">Generate Report</a></div>
                 </div>
             </div>
         </div>
+        {% endif %}
 
-    </div> <!-- This is the single closing div for the main grid row -->
-    <div class="col">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body d-flex flex-column">
-                    <h5 class="card-title text-info"><i class="bi bi-archive-fill me-2"></i>Inventory Valuation</h5>
-                    <p class="card-text small">A snapshot of current stock levels and their financial value (cost and sale price).</p>
-                    <div class="mt-auto text-end">
-                        <a href="{{ url_for('report_inventory') }}" class="btn btn-info">Generate Report</a>
-                    </div>
-                </div>
-            </div>
-        </div>
+    </div> 
+</div>
 {% endblock %}

@@ -2465,44 +2465,68 @@ def log_brooding_mortality():
         db.rollback()
         flash(f"An error occurred: {e}", "danger")
     return redirect(url_for('brooding_dashboard'))
-
 @app.route('/brooding/batch/transfer', methods=['POST'])
 @login_required
 @permission_required('transfer_brooding_batch')
 def transfer_brooding_batch():
     db = get_db()
     try:
-        # ... (Get form data: batch_id, transfer_date, target_flock_id) ...
-        # ... (Calculate final_cost_per_bird as you did before) ...
+        batch_id = int(request.form.get('batch_id'))
+        target_flock_id = int(request.form.get('target_flock_id'))
+        transfer_date = request.form.get('transfer_date')
+
+        # --- Get Batch Info ---
+        batch = db.execute("SELECT * FROM brooding_batches WHERE id = ?", (batch_id,)).fetchone()
+        if not batch:
+            flash("Brooding batch not found.", "danger")
+            return redirect(url_for('brooding_dashboard'))
         
-        # --- NEW LOGIC: UPDATE THE TARGET FLOCK ---
-        # 1. Get the target flock's current data
+        # --- Calculate Final Costs ---
+        feed_cost_row = db.execute(
+            "SELECT COALESCE(SUM(cost_of_usage), 0) as total FROM inventory_log WHERE brooding_batch_id = ?",
+            (batch_id,)
+        ).fetchone()
+        
+        final_total_cost = (batch['initial_cost'] or 0) + (feed_cost_row['total'] or 0)
+        surviving_birds = batch['current_chick_count']
+        final_cost_per_bird = final_total_cost / surviving_birds if surviving_birds > 0 else 0
+
+        # --- Get Target Flock Info ---
         target_flock = db.execute("SELECT bird_count, cost_per_bird FROM poultry_flocks WHERE id = ?", (target_flock_id,)).fetchone()
         
-        # 2. Calculate the new average cost per bird for the flock
-        current_total_value = (target_flock['bird_count'] or 0) * (target_flock['cost_per_bird'] or 0)
+        # --- Calculate New Average Cost for the Flock ---
+        current_flock_value = (target_flock['bird_count'] or 0) * (target_flock['cost_per_bird'] or 0)
         new_birds_value = surviving_birds * final_cost_per_bird
-        new_total_birds = (target_flock['bird_count'] or 0) + surviving_birds
-        new_average_cost = (current_total_value + new_birds_value) / new_total_birds if new_total_birds > 0 else 0
+        new_total_birds_in_flock = (target_flock['bird_count'] or 0) + surviving_birds
+        new_average_cost = (current_flock_value + new_birds_value) / new_total_birds_in_flock if new_total_birds_in_flock > 0 else 0
 
         # --- UPDATE TABLES IN A TRANSACTION ---
-        # Update the brooding batch (as before)
-        db.execute("UPDATE brooding_batches SET ... WHERE id = ?", (..., batch_id))
         
-        # Update the active flock with new bird count AND new average cost
+        # 1. Update the brooding batch to mark it as transferred
+        db.execute("""
+            UPDATE brooding_batches SET 
+                status = 'Transferred',
+                transfer_date = ?,
+                final_chick_count = ?,
+                final_total_cost = ?,
+                final_cost_per_bird = ?
+            WHERE id = ?
+        """, (transfer_date, surviving_birds, final_total_cost, final_cost_per_bird, batch_id))
+        
+        # 2. Update the active flock with new bird count AND new average cost
         db.execute("""
             UPDATE poultry_flocks SET bird_count = ?, cost_per_bird = ? 
             WHERE id = ?
-        """, (new_total_birds, new_average_cost, target_flock_id))
+        """, (new_total_birds_in_flock, new_average_cost, target_flock_id))
         
         db.commit()
         flash(f"{surviving_birds} birds successfully transferred. New flock average cost/bird: ₦{new_average_cost:,.2f}", "success")
+
     except Exception as e:
         db.rollback()
-        flash(f"An error occurred: {e}", "danger")
+        flash(f"An error occurred during transfer: {e}", "danger")
+        
     return redirect(url_for('brooding_dashboard'))
-# Add this new route to app.py, e.g., in Section 13
-
 @app.route('/poultry/flock/log-mortality', methods=['POST'])
 @login_required
 @permission_required('log_poultry_mortality')
@@ -2550,6 +2574,118 @@ def log_flock_mortality():
         flash(f"An error occurred: {e}", "danger")
 
     return redirect(url_for('poultry_dashboard'))
+# In app.py, add these three new routes in your Brooding Section
+
+@app.route('/brooding/batch/edit/<int:batch_id>', methods=['POST'])
+@login_required
+@permission_required('add_brooding_batch') # Reuse permission
+def edit_brooding_batch(batch_id):
+    db = get_db()
+    try:
+        # Get data from the edit form
+        name = request.form.get('batch_name')
+        breed = request.form.get('breed')
+        arrival_date = request.form.get('arrival_date')
+        initial_count = int(request.form.get('initial_chick_count'))
+        initial_cost = float(request.form.get('initial_cost'))
+
+        # In a real-world scenario, you might want to add logic here to
+        # adjust the 'current_chick_count' if the 'initial_chick_count' is changed.
+        # For now, we will keep it simple.
+        
+        db.execute("""
+            UPDATE brooding_batches SET
+                batch_name = ?,
+                breed = ?,
+                arrival_date = ?,
+                initial_chick_count = ?,
+                initial_cost = ?
+            WHERE id = ?
+        """, (name, breed, arrival_date, initial_count, initial_cost, batch_id))
+        db.commit()
+        flash(f"Batch '{name}' updated successfully.", "success")
+        
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred while updating the batch: {e}", "danger")
+        
+    return redirect(url_for('brooding_dashboard'))
+
+
+@app.route('/brooding/batch/delete/<int:batch_id>', methods=['POST'])
+@login_required
+@permission_required('add_brooding_batch') # Reuse permission, or create a 'delete_batch' permission
+def delete_brooding_batch(batch_id):
+    db = get_db()
+    try:
+        # IMPORTANT: Before deleting, check if this batch has any linked logs.
+        # Deleting a batch with history can corrupt data. For safety, we'll only allow
+        # deletion if there are no feed or mortality logs.
+        feed_logs = db.execute("SELECT id FROM inventory_log WHERE brooding_batch_id = ?", (batch_id,)).fetchone()
+        mortality_logs = db.execute("SELECT id FROM brooding_log WHERE batch_id = ?", (batch_id,)).fetchone()
+
+        if feed_logs or mortality_logs:
+            flash("Cannot delete this batch because it has a history of feed usage or mortality. Deleting it would corrupt your reports.", "danger")
+            return redirect(url_for('brooding_dashboard'))
+
+        # If there's no history, it's safe to delete.
+        db.execute("DELETE FROM brooding_batches WHERE id = ?", (batch_id,))
+        db.commit()
+        flash("Brooding batch deleted successfully.", "success")
+
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred: {e}", "danger")
+        
+    return redirect(url_for('brooding_dashboard'))
+
+
+@app.route('/report/brooding')
+@login_required
+@permission_required('run_brooding_report')
+def report_brooding():
+    db = get_db()
+    start_date, end_date = _get_report_dates(request.args)
+    
+    # This query gets all brooding batches within the date range and calculates their stats
+    brooding_report_data = db.execute("""
+        SELECT
+            b.id,
+            b.batch_name,
+            b.breed,
+            b.arrival_date,
+            b.transfer_date,
+            b.initial_chick_count,
+            b.initial_cost,
+            (b.initial_chick_count - b.current_chick_count) as total_mortality,
+            (SELECT COALESCE(SUM(il.cost_of_usage), 0) FROM inventory_log il WHERE il.brooding_batch_id = b.id) as total_feed_cost
+        FROM brooding_batches b
+        WHERE b.arrival_date BETWEEN ? AND ?
+        ORDER BY b.arrival_date DESC
+    """, (start_date, end_date)).fetchall()
+    
+    # Process the data to add calculated fields
+    report_rows = []
+    for row in brooding_report_data:
+        row_dict = dict(row)
+        total_cost = (row_dict['initial_cost'] or 0) + (row_dict['total_feed_cost'] or 0)
+        row_dict['total_cost'] = total_cost
+        
+        mortality_rate = 0
+        if row_dict['initial_chick_count'] > 0:
+            mortality_rate = row_dict['total_mortality'] / row_dict['initial_chick_count']
+        row_dict['mortality_rate'] = mortality_rate
+        
+        report_rows.append(row_dict)
+
+    return render_template(
+        'report_brooding.html',
+        user=g.user,
+        start_date=start_date,
+        end_date=end_date,
+        report_data=report_rows,
+        now=datetime.utcnow()
+    )
 # ==============================================================================
 # 14. Table Water  route
 # ==============================================================================
