@@ -2087,6 +2087,9 @@ def log_inventory_usage():
     Handles logging the usage of an inventory item and calculates the cost.
     This single function can now link usage to a poultry flock, a water 
     production run, OR a brooding batch, making it highly flexible.
+    
+    NEW: If usage is for a brooding batch, it creates a journal entry to
+    transfer the cost from the material inventory to the brooding livestock asset.
     """
     db = get_db()
     try:
@@ -2095,18 +2098,17 @@ def log_inventory_usage():
         quantity_used = float(request.form.get('quantity_used'))
         log_date = request.form.get('log_date')
 
-        # --- NEW: Optional Link Fields ---
-        # The form will only send ONE of these. The others will be `None`.
+        # --- Optional Link Fields ---
         flock_id = request.form.get('flock_id') or None
         water_log_id = request.form.get('water_production_log_id') or None
-        brooding_batch_id = request.form.get('brooding_batch_id') or None # <-- THE NEW FIELD
+        brooding_batch_id = request.form.get('brooding_batch_id') or None
 
         if not all([item_id, quantity_used, log_date]) or quantity_used <= 0:
             flash('Invalid item, quantity, or date provided.', 'warning')
             return redirect(request.referrer or url_for('dashboard'))
 
-        # --- Transaction Logic (Mostly Unchanged) ---
-        item = db.execute("SELECT quantity, name, unit_cost FROM inventory WHERE id = ?", (item_id,)).fetchone()
+        # --- Get Item Details ---
+        item = db.execute("SELECT id, quantity, name, unit_cost, category FROM inventory WHERE id = ?", (item_id,)).fetchone()
         if not item or item['quantity'] < quantity_used:
             flash(f"Not enough stock for '{item['name'] if item else 'item'}'. Only {item['quantity'] if item else 0} available.", 'danger')
             return redirect(request.referrer or url_for('dashboard'))
@@ -2114,11 +2116,12 @@ def log_inventory_usage():
         # Calculate the cost of this specific usage event
         cost_of_this_usage = quantity_used * (item['unit_cost'] or 0)
         
-        # 1. Decrease the quantity in the main inventory table
+        # --- DATABASE TRANSACTION ---
+
+        # 1. Operationally: Decrease the quantity in the main inventory table
         db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (quantity_used, item_id))
 
-        # 2. Add a record to the inventory_log table with ALL possible link fields.
-        #    SQLite will correctly handle the fields that are None.
+        # 2. Operationally: Add a record to the inventory_log table for history
         db.execute("""
             INSERT INTO inventory_log 
             (log_date, inventory_item_id, quantity_used, cost_of_usage, flock_id, water_production_log_id, brooding_batch_id, created_by_user_id) 
@@ -2126,6 +2129,34 @@ def log_inventory_usage():
             """,
             (log_date, item_id, quantity_used, cost_of_this_usage, flock_id, water_log_id, brooding_batch_id, g.user.id))
         
+        # 3. Financially: If this usage was for a brooding batch, create a journal entry
+        if brooding_batch_id and cost_of_this_usage > 0:
+            # Debit: The value of the brooding batch asset increases
+            brooding_asset_id = db.execute("SELECT id FROM accounts WHERE name = 'Inventory - Brooding Livestock'").fetchone()['id']
+            
+            # Credit: The value of the material inventory asset decreases
+            # We map the inventory category to the correct GL account
+            inventory_account_map = {
+                'Feed': 'Inventory - Feed',
+                'Medication': 'Inventory - Medication',
+                'Water Production': 'Inventory - Water Materials'
+                # Add other mappings here if needed
+            }
+            # Use the item's category to find the account name, with a fallback
+            inventory_account_name = inventory_account_map.get(item['category'], 'Inventory - General')
+            credit_account_row = db.execute("SELECT id FROM accounts WHERE name = ?", (inventory_account_name,)).fetchone()
+            
+            if not credit_account_row:
+                 raise Exception(f"CRITICAL ERROR: Inventory account '{inventory_account_name}' not found in Chart of Accounts.")
+            
+            inventory_asset_id = credit_account_row['id']
+            
+            description = f"Usage of {item['name']} for brooding batch ID {brooding_batch_id}"
+            db.execute("""
+                INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (log_date, description, brooding_asset_id, inventory_asset_id, cost_of_this_usage, g.user.id))
+
         db.commit()
 
         flash(f'Usage of {item["name"]} logged successfully (Cost: ₦{cost_of_this_usage:,.2f})', 'success')
@@ -2134,8 +2165,7 @@ def log_inventory_usage():
         db.rollback()
         flash(f"An unexpected error occurred: {e}", 'danger')
 
-    # `request.referrer` is a smart way to redirect the user back to the page they came from 
-    # (e.g., back to the brooding dashboard or the poultry dashboard).
+    # Redirect the user back to the page they came from
     return redirect(request.referrer or url_for('dashboard'))
 # ==============================================================================
 # 13. DATA MODIFICATION & ACTION ROUTES
@@ -2383,13 +2413,13 @@ def delete_inventory_item(item_id):
 # ==============================================================================
 @app.route('/brooding')
 @login_required
-@permission_required('view_brooding_dashboard') # Reuse existing permission
+@permission_required('view_brooding_dashboard')
 def brooding_dashboard():
     """Displays the new Brooding Management dashboard."""
     db = get_db()
     
-    # Get all active brooding batches and calculate their running costs
-    active_batches = db.execute("""
+    # Get all active brooding batches
+    active_batches_rows = db.execute("""
         SELECT 
             b.*,
             (SELECT COALESCE(SUM(il.cost_of_usage), 0) FROM inventory_log il WHERE il.brooding_batch_id = b.id) as running_feed_cost,
@@ -2399,28 +2429,48 @@ def brooding_dashboard():
         ORDER BY b.arrival_date DESC
     """).fetchall()
 
+    # --- NEW: Process the data to add our 'cost per bird' calculation ---
+    active_batches = []
+    for row in active_batches_rows:
+        batch = dict(row) # Convert the database row to a mutable dictionary
+        
+        # Calculate the total running cost
+        total_running_cost = (batch['initial_cost'] or 0) + (batch['running_feed_cost'] or 0)
+        batch['total_running_cost'] = total_running_cost
+        
+        # Calculate the cost per surviving bird to date
+        current_chick_count = batch['current_chick_count']
+        if current_chick_count > 0:
+            batch['cost_per_bird_to_date'] = total_running_cost / current_chick_count
+        else:
+            batch['cost_per_bird_to_date'] = 0
+            
+        active_batches.append(batch)
+    # --- END OF NEW LOGIC ---
+
     # Get inventory items categorized as "Feed" or "Medication" for the modals
     brooding_supplies = db.execute("SELECT * FROM inventory WHERE category IN ('Feed', 'Medication') AND quantity > 0").fetchall()
 
     # Get a list of main "Active" flocks to transfer birds into
     active_flocks = db.execute("SELECT id, flock_name FROM poultry_flocks WHERE status = 'Active'").fetchall()
-
-    # This is the return statement that sends all the data to your HTML file
+    
+    # Get a list of asset accounts for the payment dropdown
+    asset_accounts = db.execute("SELECT * FROM accounts WHERE type = 'Asset' AND name NOT LIKE 'Inventory%' ORDER BY name").fetchall()
+    
     return render_template(
         'brooding.html',
         user=g.user,
-        active_batches=active_batches,
+        active_batches=active_batches, # Pass the new processed list
         brooding_supplies=brooding_supplies,
         active_flocks=active_flocks,
+        asset_accounts=asset_accounts,
         today_date=date.today().strftime('%Y-%m-%d')
     )
-
 @app.route('/brooding/batch/add', methods=['POST'])
 @login_required
 @permission_required('add_brooding_batch')
 @check_day_closed('arrival_date')
 def add_brooding_batch():
-    """Adds a new batch of day-old chicks."""
     db = get_db()
     try:
         name = request.form.get('batch_name')
@@ -2428,18 +2478,35 @@ def add_brooding_batch():
         arrival_date = request.form.get('arrival_date')
         chick_count = int(request.form.get('initial_chick_count'))
         initial_cost = float(request.form.get('initial_cost'))
+        payment_account_id = int(request.form.get('payment_account_id')) # New field
 
-        db.execute("""
+        # --- DATABASE TRANSACTION ---
+        
+        # 1. Insert the new batch record
+        cursor = db.cursor()
+        cursor.execute("""
             INSERT INTO brooding_batches (batch_name, breed, arrival_date, initial_chick_count, initial_cost, current_chick_count)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (name, breed, arrival_date, chick_count, initial_cost, chick_count))
+        new_batch_id = cursor.lastrowid
+        
+        # 2. Create the financial journal entry
+        if initial_cost > 0:
+            brooding_asset_id = db.execute("SELECT id FROM accounts WHERE name = 'Inventory - Brooding Livestock'").fetchone()['id']
+            description = f"Purchase of {chick_count} chicks for batch: {name}"
+            db.execute("""
+                INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (arrival_date, description, brooding_asset_id, payment_account_id, initial_cost, g.user.id))
+
         db.commit()
-        flash(f"New brooding batch '{name}' added successfully.", "success")
+        flash(f"New brooding batch '{name}' added successfully and purchase recorded.", "success")
+        
     except Exception as e:
         db.rollback()
         flash(f"An error occurred: {e}", "danger")
+        
     return redirect(url_for('brooding_dashboard'))
-
 @app.route('/brooding/log/mortality', methods=['POST'])
 @login_required
 @permission_required('log_brooding_mortality')
@@ -2469,6 +2536,11 @@ def log_brooding_mortality():
 @login_required
 @permission_required('transfer_brooding_batch')
 def transfer_brooding_batch():
+    """
+    Handles transferring a completed brooding batch to a laying flock.
+    This function performs both operational updates (changing status, updating
+    bird counts) and financial transactions (moving asset value between GL accounts).
+    """
     db = get_db()
     try:
         batch_id = int(request.form.get('batch_id'))
@@ -2500,9 +2572,9 @@ def transfer_brooding_batch():
         new_total_birds_in_flock = (target_flock['bird_count'] or 0) + surviving_birds
         new_average_cost = (current_flock_value + new_birds_value) / new_total_birds_in_flock if new_total_birds_in_flock > 0 else 0
 
-        # --- UPDATE TABLES IN A TRANSACTION ---
+        # --- DATABASE TRANSACTION ---
         
-        # 1. Update the brooding batch to mark it as transferred
+        # 1. Operationally: Update the brooding batch to mark it as transferred
         db.execute("""
             UPDATE brooding_batches SET 
                 status = 'Transferred',
@@ -2513,12 +2585,27 @@ def transfer_brooding_batch():
             WHERE id = ?
         """, (transfer_date, surviving_birds, final_total_cost, final_cost_per_bird, batch_id))
         
-        # 2. Update the active flock with new bird count AND new average cost
+        # 2. Operationally: Update the active flock with new bird count AND new average cost
         db.execute("""
             UPDATE poultry_flocks SET bird_count = ?, cost_per_bird = ? 
             WHERE id = ?
         """, (new_total_birds_in_flock, new_average_cost, target_flock_id))
         
+        # 3. Financially: Create the journal entry to move the asset value
+        if final_total_cost > 0:
+            # Debit: The 'Laying Flock' asset account increases in value
+            flock_asset_id = db.execute("SELECT id FROM accounts WHERE name = 'Inventory - Laying Flock Asset'").fetchone()['id']
+            
+            # Credit: The 'Brooding Livestock' asset account decreases in value
+            brooding_asset_id = db.execute("SELECT id FROM accounts WHERE name = 'Inventory - Brooding Livestock'").fetchone()['id']
+            
+            description = f"Transfer of batch ID {batch_id} value to flock ID {target_flock_id}"
+            
+            db.execute("""
+                INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (transfer_date, description, flock_asset_id, brooding_asset_id, final_total_cost, g.user.id))
+
         db.commit()
         flash(f"{surviving_birds} birds successfully transferred. New flock average cost/bird: ₦{new_average_cost:,.2f}", "success")
 
@@ -2684,6 +2771,73 @@ def report_brooding():
         start_date=start_date,
         end_date=end_date,
         report_data=report_rows,
+        now=datetime.utcnow()
+    )
+# In app.py, add this new route
+
+@app.route('/brooding/batch/report/<int:batch_id>')
+@login_required
+@permission_required('run_brooding_report') # Re-use the same permission
+def brooding_batch_report(batch_id):
+    db = get_db()
+    
+    # Get the main details for the batch
+    batch = db.execute("SELECT * FROM brooding_batches WHERE id = ?", (batch_id,)).fetchone()
+    if not batch:
+        flash("Brooding batch not found.", "danger")
+        return redirect(url_for('brooding_dashboard'))
+
+    # Get all mortality logs for this batch
+    mortality_logs = db.execute(
+        "SELECT log_date, mortality_count FROM brooding_log WHERE batch_id = ? ORDER BY log_date",
+        (batch_id,)
+    ).fetchall()
+
+    # Get all inventory usage logs for this batch
+    usage_logs = db.execute("""
+        SELECT il.log_date, i.name, il.quantity_used, il.cost_of_usage
+        FROM inventory_log il
+        JOIN inventory i ON il.inventory_item_id = i.id
+        WHERE il.brooding_batch_id = ? ORDER BY il.log_date
+    """, (batch_id,)).fetchall()
+
+    # --- Combine and process all events into a single, day-by-day timeline ---
+    daily_events = {}
+    
+    # Process mortality
+    for log in mortality_logs:
+        date_str = log['log_date']
+        if date_str not in daily_events:
+            daily_events[date_str] = {'mortality': 0, 'usage': []}
+        daily_events[date_str]['mortality'] += log['mortality_count']
+
+    # Process inventory usage
+    for log in usage_logs:
+        date_str = log['log_date']
+        if date_str not in daily_events:
+            daily_events[date_str] = {'mortality': 0, 'usage': []}
+        daily_events[date_str]['usage'].append(dict(log))
+
+    # Sort the events by date
+    sorted_daily_events = sorted(daily_events.items())
+
+    # Calculate final summary stats
+    total_feed_cost = sum(log['cost_of_usage'] for log in usage_logs)
+    total_mortality = sum(log['mortality_count'] for log in mortality_logs)
+    total_cost = (batch['initial_cost'] or 0) + total_feed_cost
+    
+    summary = {
+        'total_feed_cost': total_feed_cost,
+        'total_mortality': total_mortality,
+        'total_cost': total_cost
+    }
+
+    return render_template(
+        'brooding_batch_report.html',
+        user=g.user,
+        batch=batch,
+        daily_events=sorted_daily_events,
+        summary=summary,
         now=datetime.utcnow()
     )
 # ==============================================================================

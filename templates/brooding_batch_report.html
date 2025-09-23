@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Brooding Report for {{ batch.batch_name }}{% endblock %}
+
+{% block content %}
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom no-print">
+        <h1 class="h2">Brooding Batch Report</h1>
+        <div>
+            <a href="{{ url_for('brooding_dashboard') }}" class="btn btn-sm btn-outline-secondary me-2">
+                <i class="bi bi-arrow-left"></i> Back to Brooding Dashboard
+            </a>
+            <button onclick="window.print();" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-printer-fill"></i> Print Report
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Report Card -->
+    <div class="card shadow-sm">
+        <!-- Report Header -->
+        <div class="card-header text-center">
+            <h2>Brooding Batch Activity Log</h2>
+            <p class="h4 mb-0"><strong>Batch: {{ batch.batch_name }}</strong> ({{ batch.breed }})</p>
+            <p class="text-muted">Arrival Date: {{ batch.arrival_date }}</p>
+        </div>
+
+        <div class="card-body">
+            <!-- Summary Section -->
+            <div class="row mb-4">
+                <div class="col-md-3"><strong>Initial Count:</strong> {{ batch.initial_chick_count }}</div>
+                <div class="col-md-3"><strong>Current Count:</strong> {{ batch.current_chick_count }}</div>
+                <div class="col-md-3"><strong>Total Mortality:</strong> <span class="text-danger">{{ summary.total_mortality }}</span></div>
+                <div class="col-md-3"><strong>Mortality Rate:</strong> <span class="text-danger">{{ '{:,.2%}'.format(summary.total_mortality / batch.initial_chick_count if batch.initial_chick_count else 0) }}</span></div>
+            </div>
+            <div class="row mb-4">
+                <div class="col-md-4"><strong>Initial Purchase Cost:</strong> ₦{{ '{:,.2f}'.format(batch.initial_cost) }}</div>
+                <div class="col-md-4"><strong>Total Feed/Meds Cost:</strong> ₦{{ '{:,.2f}'.format(summary.total_feed_cost) }}</div>
+                <div class="col-md-4"><strong>Total Cost to Date:</strong> <strong>₦{{ '{:,.2f}'.format(summary.total_cost) }}</strong></div>
+            </div>
+
+            <hr>
+            <h4 class="mb-3">Daily Activity Log</h4>
+
+            <!-- Daily Log Table -->
+            <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Activity / Item Used</th>
+                        <th class="text-end">Quantity</th>
+                        <th class="text-end">Cost Impact</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for date, events in daily_events %}
+                        <tr class="table-secondary">
+                            <td colspan="4"><strong>{{ date }}</strong></td>
+                        </tr>
+                        {% if events.mortality > 0 %}
+                        <tr>
+                            <td></td>
+                            <td><span class="text-danger">Mortality Recorded</span></td>
+                            <td class="text-end text-danger">{{ events.mortality }} bird(s)</td>
+                            <td class="text-end text-danger">N/A</td>
+                        </tr>
+                        {% endif %}
+                        {% for usage in events.usage %}
+                        <tr>
+                            <td></td>
+                            <td>{{ usage.name }}</td>
+                            <td class="text-end">{{ usage.quantity_used }}</td>
+                            <td class="text-end">₦{{ '{:,.2f}'.format(usage.cost_of_usage) }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center p-3 text-muted">No activities have been logged for this batch yet.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer text-center text-muted small no-print">
+            Report generated on {{ now.strftime('%Y-%m-%d %H:%M:%S') }}
+        </div>
+    </div>
+    <style> @media print { .no-print { display: none !important; } .card { border: none; box-shadow: none; } } </style>
+{% endblock %}
