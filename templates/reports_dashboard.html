@@ -75,6 +75,17 @@
         <div class="col">
             <div class="card h-100 shadow-sm report-card">
                 <div class="card-body d-flex flex-column">
+                    <h5 class="card-title text-danger"><i class="bi bi-clipboard2-pulse-fill me-2"></i>Brooding Mortality Log</h5>
+                    <p class="card-text small">A day-by-day list of all mortalities recorded in the brooding section.</p>
+                    <div class="mt-auto text-end">
+                        <a href="{{ url_for('report_brooding_mortality') }}" class="btn btn-danger">Generate Report</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100 shadow-sm report-card">
+                <div class="card-body d-flex flex-column">
                     <h5 class="card-title text-success"><i class="bi bi-person-check-fill me-2"></i>Daily Sales</h5>
                     <p class="card-text small">Summary of sales for a specific day, grouped by cashier.</p>
                     <div class="mt-auto text-end"><a href="{{ url_for('report_daily_sales') }}" class="btn btn-success">Generate Report</a></div>

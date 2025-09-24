@@ -1950,40 +1950,6 @@ def report_feed_movement():
         total_cost=total_cost,
         now=datetime.utcnow()
     )
-
-@app.route('/report/mortality')
-@login_required
-@permission_required('run_operational_reports')
-def report_mortality():
-    """Generates a report on mortality in the brooding section."""
-    db = get_db()
-    start_date, end_date = _get_report_dates(request.args)
-    
-    mortality_logs = db.execute("""
-        SELECT
-            bl.log_date,
-            bb.batch_name,
-            bb.initial_chick_count,
-            bl.mortality_count
-        FROM brooding_log bl
-        JOIN brooding_batches bb ON bl.batch_id = bb.id
-        WHERE
-            bl.log_date BETWEEN ? AND ?
-        ORDER BY bl.log_date DESC, bb.batch_name
-    """, (start_date, end_date)).fetchall()
-
-    total_mortality = sum(log['mortality_count'] for log in mortality_logs)
-
-    return render_template(
-        'report_mortality.html',
-        user=g.user,
-        start_date=start_date,
-        end_date=end_date,
-        mortality_logs=mortality_logs,
-        total_mortality=total_mortality,
-        now=datetime.utcnow()
-    )
-
 @app.route('/report/flock-movement')
 @login_required
 @permission_required('run_operational_reports')
@@ -2131,18 +2097,13 @@ def log_inventory_usage():
         
         # 3. Financially: If this usage was for a brooding batch, create a journal entry
         if brooding_batch_id and cost_of_this_usage > 0:
-            # Debit: The value of the brooding batch asset increases
             brooding_asset_id = db.execute("SELECT id FROM accounts WHERE name = 'Inventory - Brooding Livestock'").fetchone()['id']
             
-            # Credit: The value of the material inventory asset decreases
-            # We map the inventory category to the correct GL account
             inventory_account_map = {
                 'Feed': 'Inventory - Feed',
                 'Medication': 'Inventory - Medication',
                 'Water Production': 'Inventory - Water Materials'
-                # Add other mappings here if needed
             }
-            # Use the item's category to find the account name, with a fallback
             inventory_account_name = inventory_account_map.get(item['category'], 'Inventory - General')
             credit_account_row = db.execute("SELECT id FROM accounts WHERE name = ?", (inventory_account_name,)).fetchone()
             
@@ -2165,8 +2126,72 @@ def log_inventory_usage():
         db.rollback()
         flash(f"An unexpected error occurred: {e}", 'danger')
 
-    # Redirect the user back to the page they came from
     return redirect(request.referrer or url_for('dashboard'))
+@app.route('/brooding/batch/report/<int:batch_id>')
+@login_required
+@permission_required('run_brooding_report') # Re-use the same permission
+def brooding_batch_report(batch_id):
+    db = get_db()
+    
+    # Get the main details for the batch
+    batch = db.execute("SELECT * FROM brooding_batches WHERE id = ?", (batch_id,)).fetchone()
+    if not batch:
+        flash("Brooding batch not found.", "danger")
+        return redirect(url_for('brooding_dashboard'))
+
+    # Get all mortality logs for this batch
+    mortality_logs = db.execute(
+        "SELECT log_date, mortality_count FROM brooding_log WHERE batch_id = ? ORDER BY log_date",
+        (batch_id,)
+    ).fetchall()
+
+    # Get all inventory usage logs for this batch
+    usage_logs = db.execute("""
+        SELECT il.log_date, i.name, il.quantity_used, il.cost_of_usage
+        FROM inventory_log il
+        JOIN inventory i ON il.inventory_item_id = i.id
+        WHERE il.brooding_batch_id = ? ORDER BY il.log_date
+    """, (batch_id,)).fetchall()
+
+    # --- Combine and process all events into a single, day-by-day timeline ---
+    daily_events = {}
+    
+    # Process mortality
+    for log in mortality_logs:
+        date_str = log['log_date']
+        if date_str not in daily_events:
+            daily_events[date_str] = {'mortality': 0, 'usage': []}
+        daily_events[date_str]['mortality'] += log['mortality_count']
+
+    # Process inventory usage
+    for log in usage_logs:
+        date_str = log['log_date']
+        if date_str not in daily_events:
+            daily_events[date_str] = {'mortality': 0, 'usage': []}
+        daily_events[date_str]['usage'].append(dict(log))
+
+    # Sort the events by date
+    sorted_daily_events = sorted(daily_events.items())
+
+    # Calculate final summary stats
+    total_feed_cost = sum(log['cost_of_usage'] for log in usage_logs)
+    total_mortality = sum(log['mortality_count'] for log in mortality_logs)
+    total_cost = (batch['initial_cost'] or 0) + total_feed_cost
+    
+    summary = {
+        'total_feed_cost': total_feed_cost,
+        'total_mortality': total_mortality,
+        'total_cost': total_cost
+    }
+
+    return render_template(
+        'brooding_batch_report.html',
+        user=g.user,
+        batch=batch,
+        daily_events=sorted_daily_events,
+        summary=summary,
+        now=datetime.utcnow()
+    )
 # ==============================================================================
 # 13. DATA MODIFICATION & ACTION ROUTES
 # ==============================================================================
@@ -2725,8 +2750,6 @@ def delete_brooding_batch(batch_id):
         flash(f"An error occurred: {e}", "danger")
         
     return redirect(url_for('brooding_dashboard'))
-
-
 @app.route('/report/brooding')
 @login_required
 @permission_required('run_brooding_report')
@@ -2771,74 +2794,75 @@ def report_brooding():
         start_date=start_date,
         end_date=end_date,
         report_data=report_rows,
-        now=datetime.utcnow()
+        now=datetime.utcnow(),
+        report_title="Brooding Performance Report" # <-- THIS IS THE CORRECTED LINE
     )
-# In app.py, add this new route
-
-@app.route('/brooding/batch/report/<int:batch_id>')
+@app.route('/report/brooding-mortality') # <-- NEW URL
 @login_required
-@permission_required('run_brooding_report') # Re-use the same permission
-def brooding_batch_report(batch_id):
+@permission_required('run_mortality_report') # You can create a new permission if you like
+def report_brooding_mortality(): # <-- NEW FUNCTION NAME
     db = get_db()
+    start_date, end_date = _get_report_dates(request.args)
     
-    # Get the main details for the batch
-    batch = db.execute("SELECT * FROM brooding_batches WHERE id = ?", (batch_id,)).fetchone()
-    if not batch:
-        flash("Brooding batch not found.", "danger")
-        return redirect(url_for('brooding_dashboard'))
+    # This query correctly gets ONLY mortality from the brooding section
+    mortality_logs = db.execute("""
+        SELECT
+            bl.log_date,
+            bb.batch_name,
+            bb.initial_chick_count,
+            bl.mortality_count
+        FROM brooding_log bl
+        JOIN brooding_batches bb ON bl.batch_id = bb.id
+        WHERE
+            bl.log_date BETWEEN ? AND ?
+        ORDER BY bl.log_date DESC, bb.batch_name
+    """, (start_date, end_date)).fetchall()
 
-    # Get all mortality logs for this batch
-    mortality_logs = db.execute(
-        "SELECT log_date, mortality_count FROM brooding_log WHERE batch_id = ? ORDER BY log_date",
-        (batch_id,)
-    ).fetchall()
-
-    # Get all inventory usage logs for this batch
-    usage_logs = db.execute("""
-        SELECT il.log_date, i.name, il.quantity_used, il.cost_of_usage
-        FROM inventory_log il
-        JOIN inventory i ON il.inventory_item_id = i.id
-        WHERE il.brooding_batch_id = ? ORDER BY il.log_date
-    """, (batch_id,)).fetchall()
-
-    # --- Combine and process all events into a single, day-by-day timeline ---
-    daily_events = {}
-    
-    # Process mortality
-    for log in mortality_logs:
-        date_str = log['log_date']
-        if date_str not in daily_events:
-            daily_events[date_str] = {'mortality': 0, 'usage': []}
-        daily_events[date_str]['mortality'] += log['mortality_count']
-
-    # Process inventory usage
-    for log in usage_logs:
-        date_str = log['log_date']
-        if date_str not in daily_events:
-            daily_events[date_str] = {'mortality': 0, 'usage': []}
-        daily_events[date_str]['usage'].append(dict(log))
-
-    # Sort the events by date
-    sorted_daily_events = sorted(daily_events.items())
-
-    # Calculate final summary stats
-    total_feed_cost = sum(log['cost_of_usage'] for log in usage_logs)
     total_mortality = sum(log['mortality_count'] for log in mortality_logs)
-    total_cost = (batch['initial_cost'] or 0) + total_feed_cost
-    
-    summary = {
-        'total_feed_cost': total_feed_cost,
-        'total_mortality': total_mortality,
-        'total_cost': total_cost
-    }
 
     return render_template(
-        'brooding_batch_report.html',
+        'report_brooding_mortality.html', # <-- NEW TEMPLATE NAME
         user=g.user,
-        batch=batch,
-        daily_events=sorted_daily_events,
-        summary=summary,
-        now=datetime.utcnow()
+        start_date=start_date,
+        end_date=end_date,
+        mortality_logs=mortality_logs,
+        total_mortality=total_mortality,
+        now=datetime.utcnow(),
+        report_title="Brooding Section Mortality Log"
+    )
+@app.route('/report/mortality')
+@login_required
+@permission_required('run_mortality_report')
+def report_mortality():
+    db = get_db()
+    start_date, end_date = _get_report_dates(request.args)
+    
+    # This query gets all individual mortality log entries for all batches within the date range
+    mortality_logs = db.execute("""
+        SELECT
+            bl.log_date,
+            bb.batch_name,
+            bb.initial_chick_count,
+            bl.mortality_count
+        FROM brooding_log bl
+        JOIN brooding_batches bb ON bl.batch_id = bb.id
+        WHERE
+            bl.log_date BETWEEN ? AND ?
+        ORDER BY bl.log_date DESC, bb.batch_name
+    """, (start_date, end_date)).fetchall()
+
+    # Calculate the grand total for the summary footer
+    total_mortality = sum(log['mortality_count'] for log in mortality_logs)
+
+    return render_template(
+        'report_mortality.html',
+        user=g.user,
+        start_date=start_date,
+        end_date=end_date,
+        mortality_logs=mortality_logs,
+        total_mortality=total_mortality,
+        now=datetime.utcnow(),
+        report_title="Brooding Mortality Report" # Pass the title to the base template
     )
 # ==============================================================================
 # 14. Table Water  route
@@ -2978,8 +3002,6 @@ def update_water_product(product_id):
         flash(f"An unexpected error occurred: {e}", 'danger')
 
     return redirect(url_for('water_dashboard'))
-# In app.py, REPLACE the calculate_water_cost function
-
 @app.route('/water/production/calculate-cost', methods=['POST'])
 @login_required
 @permission_required('calculate_water_cost')
@@ -3117,8 +3139,6 @@ def delete_production_log(log_id):
         flash(f"An error occurred: {e}", "danger")
         
     return redirect(url_for('water_dashboard'))
-# In app.py, add this new route
-
 @app.route('/water/production/other-costs/log', methods=['POST'])
 @login_required
 # @permission_required('log_other_costs') # You can create a new permission for this
