@@ -680,7 +680,6 @@ def water_dashboard():
         water_products=water_products, # <-- THE MISSING PIECE
         today_date=date.today().strftime('%Y-%m-%d')
     )
-# In app.py, REPLACE your existing contacts_dashboard function with this one
 
 @app.route('/contacts')
 @login_required
@@ -1727,39 +1726,50 @@ def report_eggs():
         end_date=end_date,
         now=datetime.utcnow()
     )
-# Add this route to app.py, in Section 10
+# In app.py, find and REPLACE the report_water function
 
 @app.route('/report/water')
 @login_required
 @permission_required('run_operational_reports')
 def report_water():
-    """Calculates and displays the Water Production report."""
-    start_date, end_date = _get_report_dates(request.args)
     db = get_db()
+    start_date, end_date = _get_report_dates(request.args)
     
+    # This query already gets all the necessary data per row
     production_logs = db.execute("""
-        SELECT wpl.production_date, wpl.quantity_produced, wp.name as product_name
+        SELECT 
+            wpl.production_date, 
+            wpl.quantity_produced,
+            wpl.production_labor_cost,
+            wpl.sales_commission,
+            wpl.total_cost,
+            wpl.cost_per_unit,
+            wp.name as product_name,
+            (SELECT COALESCE(SUM(il.cost_of_usage), 0) 
+             FROM inventory_log il 
+             WHERE il.water_production_log_id = wpl.id) as total_material_cost
         FROM water_production_log wpl
         JOIN water_products wp ON wpl.product_id = wp.id
         WHERE wpl.production_date BETWEEN ? AND ?
         ORDER BY wpl.production_date ASC
     """, (start_date, end_date)).fetchall()
     
+    # --- THIS IS THE NEW PART: CALCULATE GRAND TOTALS ---
     total_produced = sum(log['quantity_produced'] for log in production_logs)
-    
-    # Calculate number of days in the range to find the average
-    try:
-        start_dt = date.fromisoformat(start_date)
-        end_dt = date.fromisoformat(end_date)
-        num_days = (end_dt - start_dt).days + 1
-        average_daily = total_produced / num_days if num_days > 0 else 0
-    except (ValueError, TypeError):
-        average_daily = 0
+    grand_total_material_cost = sum(log['total_material_cost'] or 0 for log in production_logs)
+    grand_total_labor_cost = sum(log['production_labor_cost'] or 0 for log in production_logs)
+    grand_total_commission = sum(log['sales_commission'] or 0 for log in production_logs)
+    grand_total_cost = sum(log['total_cost'] or 0 for log in production_logs)
+    # ---------------------------------------------------
 
+    # Pass all totals to the template in the data dictionary
     data = {
         "production_logs": production_logs,
         "total_produced": total_produced,
-        "average_daily": average_daily
+        "grand_total_material_cost": grand_total_material_cost,
+        "grand_total_labor_cost": grand_total_labor_cost,
+        "grand_total_commission": grand_total_commission,
+        "grand_total_cost": grand_total_cost
     }
     
     return render_template(
@@ -1768,8 +1778,95 @@ def report_water():
         data=data,
         start_date=start_date,
         end_date=end_date,
-        now=datetime.utcnow()
+        now=datetime.utcnow(),
+        report_title="Water Production Cost Analysis"
     )
+# In app.py, add these three new routes
+
+@app.route('/water/production/costs/<int:log_id>', methods=['GET'])
+@login_required
+@permission_required('edit_production_log')
+def get_production_costs(log_id):
+    """API endpoint to fetch all costs for a specific production log."""
+    db = get_db()
+    
+    # Get direct costs from the main log
+    direct_costs = db.execute(
+        "SELECT production_labor_cost, sales_commission FROM water_production_log WHERE id = ?",
+        (log_id,)
+    ).fetchone()
+    
+    # Get all linked material costs from the inventory log
+    material_costs = db.execute("""
+        SELECT il.id as inventory_log_id, i.name, il.cost_of_usage
+        FROM inventory_log il
+        JOIN inventory i ON il.inventory_item_id = i.id
+        WHERE il.water_production_log_id = ?
+    """, (log_id,)).fetchall()
+    
+    if not direct_costs:
+        return jsonify({'error': 'Production log not found'}), 404
+        
+    return jsonify({
+        'production_labor_cost': direct_costs['production_labor_cost'] or 0,
+        'sales_commission': direct_costs['sales_commission'] or 0,
+        'materials': [dict(row) for row in material_costs]
+    })
+
+
+@app.route('/water/production/costs/direct/edit/<int:log_id>', methods=['POST'])
+@login_required
+@permission_required('edit_production_log')
+def edit_direct_costs(log_id):
+    db = get_db()
+    try:
+        new_labor = float(request.form.get('production_labor_cost', 0))
+        new_commission = float(request.form.get('sales_commission', 0))
+        
+        db.execute("""
+            UPDATE water_production_log SET
+                production_labor_cost = ?,
+                sales_commission = ?
+            WHERE id = ?
+        """, (new_labor, new_commission, log_id))
+        
+        # Invalidate the old total cost so it must be re-finalized
+        db.execute("UPDATE water_production_log SET total_cost = NULL, cost_per_unit = NULL WHERE id = ?", (log_id,))
+        
+        db.commit()
+        flash("Direct costs updated. Please re-finalize the production run.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred: {e}", "danger")
+    
+    return redirect(url_for('water_dashboard'))
+
+
+@app.route('/water/production/costs/material/edit/<int:inventory_log_id>', methods=['POST'])
+@login_required
+@permission_required('edit_production_log')
+def edit_material_cost(inventory_log_id):
+    db = get_db()
+    try:
+        new_cost = float(request.form.get('cost_of_usage', 0))
+        
+        # Get the associated water_production_log_id before we update
+        log_info = db.execute("SELECT water_production_log_id FROM inventory_log WHERE id = ?", (inventory_log_id,)).fetchone()
+        
+        # Update the specific material cost in the inventory_log
+        db.execute("UPDATE inventory_log SET cost_of_usage = ? WHERE id = ?", (new_cost, inventory_log_id))
+        
+        # Invalidate the old total cost of the parent production run
+        if log_info and log_info['water_production_log_id']:
+            db.execute("UPDATE water_production_log SET total_cost = NULL, cost_per_unit = NULL WHERE id = ?", (log_info['water_production_log_id'],))
+        
+        db.commit()
+        flash("Material cost updated. Please re-finalize the production run.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred: {e}", "danger")
+        
+    return redirect(url_for('water_dashboard'))
 @app.route('/reports/inventory')
 @login_required
 @permission_required('view_reports') # Make sure you have a 'view_reports' permission
