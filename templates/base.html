@@ -71,11 +71,12 @@
                 {% set can_view_finance = g.user.has_permission('view_financial_center') or 
                                            g.user.has_permission('view_chart_of_accounts') or
                                            g.user.has_permission('view_general_journal') or
+                                           g.user.has_permission('record_batch_deposit') or
                                            g.user.has_permission('view_reports_dashboard') %}
                 {% if g.user and can_view_finance %}
                 <li class="sidebar-menu-header mt-3">FINANCE & ADMIN</li>
                 <li>
-                    <a href="#financialSubmenu" data-bs-toggle="collapse" aria-expanded="false" class="dropdown-toggle {% if 'financial' in request.endpoint or 'report' in request.endpoint or 'chart_of_accounts' in request.endpoint or 'general_journal' in request.endpoint %}active{% endif %}">
+                    <a href="#financialSubmenu" data-bs-toggle="collapse" aria-expanded="false" class="dropdown-toggle {% if 'financial' in request.endpoint or 'report' in request.endpoint or 'chart_of_accounts' in request.endpoint or 'general_journal' in request.endpoint or 'batch_deposit' in request.endpoint %}active{% endif %}">
                         <i class="bi bi-bank"></i>Financials
                     </a>
                     <ul class="collapse list-unstyled" id="financialSubmenu">
@@ -88,6 +89,14 @@
                         {% if g.user.has_permission('view_general_journal') %}
                             <li><a href="{{ url_for('general_journal') }}">General Journal</a></li>
                         {% endif %}
+                        <!-- THIS IS THE NEW LINK -->
+                        {% if g.user.has_permission('record_batch_deposit') %}
+                            <li><a href="{{ url_for('batch_deposit') }}">Batch Deposits</a></li>
+                        {% endif %}
+                        {% if g.user.has_permission('record_batch_expense') %}
+                            <li><a href="{{ url_for('batch_expense') }}">Batch Expenses</a></li>
+                        {% endif %}
+                        <!-- END OF NEW LINK -->
                         {% if g.user.has_permission('view_reports_dashboard') %}
                             <li><a href="{{ url_for('reports_dashboard') }}">Reports Center</a></li>
                         {% endif %}

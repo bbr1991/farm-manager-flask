@@ -10,173 +10,147 @@
 <div class="card shadow-sm">
     <div class="card-body">
         <form action="{{ url_for('customer_transaction') }}" method="POST">
-            <!-- SECTION 1: COMMON FIELDS (Always Visible) -->
-            <div class="row g-3">
-                <div class="col-md-6"><label for="date" class="form-label">Transaction Date</label><input type="date" class="form-control" name="date" value="{{ today_date }}" required></div>
-                <div class="col-md-6">
-                    <label for="customer_id" class="form-label">Select Customer</label>
-                    <select class="form-select" name="customer_id" required>
-                        <option disabled selected value="">-- Choose a customer --</option>
-                        {% for customer in customers %}<option value="{{ customer.id }}">{{ customer.name }}</option>{% endfor %}
-                    </select>
-                </div>
-            </div>
+            <!-- SECTION 1: COMMON FIELDS -->
+            <div class="row g-3"><div class="col-md-6"><label for="date" class="form-label">Transaction Date</label><input type="date" class="form-control" name="date" value="{{ today_date }}" required></div><div class="col-md-6"><label for="customer_id" class="form-label">Select Customer</label><select class="form-select" name="customer_id" required><option disabled selected value="">-- Choose a customer --</option>{% for customer in customers %}<option value="{{ customer.id }}">{{ customer.name }}</option>{% endfor %}</select></div></div>
             <hr>
 
             <!-- SECTION 2: TRANSACTION TYPE SELECTOR -->
-            <div class="mb-3">
-                <label class="form-label">What type of transaction is this?</label>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="transaction_type" id="type_deposit" value="deposit" checked>
-                    <label class="form-check-label" for="type_deposit"><strong>Customer Deposit / Payment on Account</strong> (Cash is IN)</label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="transaction_type" id="type_credit_sale" value="credit_sale">
-                    <label class="form-check-label" for="type_credit_sale"><strong>Credit Sale</strong> (Goods go OUT on credit)</label>
-                </div>
-            </div>
+            <div class="mb-3"><label class="form-label">What type of transaction is this?</label><div class="form-check"><input class="form-check-input" type="radio" name="transaction_type" id="type_deposit" value="deposit" checked><label class="form-check-label" for="type_deposit"><strong>Customer Deposit / Payment on Account</strong> (Cash is IN)</label></div><div class="form-check"><input class="form-check-input" type="radio" name="transaction_type" id="type_credit_sale" value="credit_sale"><label class="form-check-label" for="type_credit_sale"><strong>Credit Sale</strong> (Goods go OUT on credit)</label></div></div>
             <hr>
 
-            <!-- SECTION 3: DEPOSIT FIELDS (Visible by default) -->
+            <!-- SECTION 3: DEPOSIT FIELDS (UPGRADED FOR MULTI-PAYMENT) -->
             <div id="deposit-fields">
                 <h5 class="text-muted">Deposit Details</h5>
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Deposit Into (Cash/Bank Account)</label>
-                        <select class="form-select" name="payment_account_id">
-                            <option value="">-- Select account --</option>
-                            {% for account in asset_accounts %}<option value="{{ account.id }}">{{ account.name }}</option>{% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-6"><label class="form-label">Amount (₦)</label><input type="number" step="0.01" class="form-control" name="amount"></div>
-                    <div class="col-12"><label class="form-label">Description / Memo</label><input type="text" class="form-control" name="description" placeholder="e.g., Advance payment for order #451"></div>
+                <div class="row g-2 align-items-end border-bottom pb-3 mb-3">
+                    <div class="col-sm-6"><label class="form-label">Payment Account</label><select class="form-select" id="payment-account-selector">{% for account in asset_accounts %}<option value="{{ account.id }}">{{ account.name }}</option>{% endfor %}</select></div>
+                    <div class="col-sm-4"><label class="form-label">Amount (₦)</label><input type="number" step="0.01" class="form-control" id="payment-amount-input"></div>
+                    <div class="col-sm-2"><button type="button" class="btn btn-secondary w-100" id="add-payment-btn">Add</button></div>
                 </div>
+                <table class="table table-sm"><thead><tr><th>Account</th><th class="text-end">Amount</th><th></th></tr></thead><tbody id="payment-items-table"><tr id="no-payments-row"><td colspan="3" class="text-center text-muted">No payments applied.</td></tr></tbody><tfoot><tr><th colspan="2" class="text-end">Total Deposit:</th><th id="total-deposit" class="text-end">₦0.00</th><th></th></tr></tfoot></table>
+                <div class="mt-3"><label class="form-label">Description / Memo</label><input type="text" class="form-control" name="description" placeholder="e.g., Payment for Invoice #123"></div>
+                <div id="hidden-payments-container"></div>
             </div>
 
-            <!-- SECTION 4: CREDIT SALE FIELDS (Initially hidden) -->
+            <!-- SECTION 4: CREDIT SALE FIELDS (No changes needed) -->
             <div id="credit-sale-fields" style="display: none;">
                 <h5 class="text-muted">Credit Sale Details</h5>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Select Item to Add</label>
-                        <select class="form-select" id="inventory_item_selector">
-                             <option disabled selected value="">-- Choose a package --</option>
-                            {% for item in inventory_items %}<option value="{{ item.id }}" data-price="{{ item.sale_price }}" data-name="{{ item.package_name }}">{{ item.package_name }} (₦{{item.sale_price}})</option>{% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-3 mb-3"><label class="form-label">Quantity</label><input type="number" class="form-control" id="quantity_selector" value="1"></div>
-                    <div class="col-md-3 mb-3 d-flex align-items-end"><button type="button" class="btn btn-info w-100" id="add-item-btn">Add Item</button></div>
-                </div>
-                <table class="table table-sm">
-                    <thead><tr><th>Item</th><th class="text-center">Qty</th><th class="text-end">Subtotal</th><th></th></tr></thead>
-                    <tbody id="sale-items-table"></tbody>
-                    <tfoot><tr><th colspan="2" class="text-end fs-5">Total Sale Value:</th><th id="grand-total" class="text-end fs-5">₦0.00</th><th></th></tr></tfoot>
-                </table>
-                <div id="hidden-inputs-container"></div>
-                <input type="hidden" name="total_amount" id="hidden-total-amount">
+                <div class="row"><div class="col-md-6 mb-3"><label class="form-label">Select Item to Add</label><select class="form-select" id="inventory_item_selector"><option disabled selected value="">-- Choose a package --</option>{% for item in inventory_items %}<option value="{{ item.id }}" data-price="{{ item.sale_price }}" data-name="{{ item.package_name }}">{{ item.package_name }} (₦{{item.sale_price}})</option>{% endfor %}</select></div><div class="col-md-3 mb-3"><label class="form-label">Quantity</label><input type="number" class="form-control" id="quantity_selector" value="1"></div><div class="col-md-3 mb-3 d-flex align-items-end"><button type="button" class="btn btn-info w-100" id="add-item-btn">Add Item</button></div></div>
+                <table class="table table-sm"><thead><tr><th>Item</th><th class="text-center">Qty</th><th class="text-end">Subtotal</th><th></th></tr></thead><tbody id="sale-items-table"></tbody><tfoot><tr><th colspan="2" class="text-end fs-5">Total Sale Value:</th><th id="grand-total" class="text-end fs-5">₦0.00</th><th></th></tr></tfoot></table>
+                <div id="hidden-items-container"></div><input type="hidden" name="total_amount" id="hidden-total-amount">
             </div>
 
-            <!-- SECTION 5: SUBMIT BUTTON -->
-            <hr class="my-4">
-            <button type="submit" class="btn btn-primary btn-lg">Post Transaction</button>
+            <hr class="my-4"><button type="submit" class="btn btn-primary btn-lg">Post Transaction</button>
         </form>
     </div>
 </div>
 {% endblock %}
 
-
 {% block scripts %}
     {{ super() }}
     <script>
-    // This is the full, correct JavaScript for this page
     document.addEventListener('DOMContentLoaded', function() {
+        // --- Form Section Toggling ---
         const depositFields = document.getElementById('deposit-fields');
         const creditSaleFields = document.getElementById('credit-sale-fields');
-        
-        // --- Logic to toggle the form sections ---
         document.querySelectorAll('input[name="transaction_type"]').forEach(radio => {
             radio.addEventListener('change', function() {
-                if (this.value === 'credit_sale') {
-                    depositFields.style.display = 'none';
-                    creditSaleFields.style.display = 'block';
-                } else {
-                    depositFields.style.display = 'block';
-                    creditSaleFields.style.display = 'none';
-                }
+                depositFields.style.display = (this.value === 'deposit') ? 'block' : 'none';
+                creditSaleFields.style.display = (this.value === 'credit_sale') ? 'block' : 'none';
             });
         });
 
-        // --- Mini-POS Logic for Credit Sale Section ---
+        // --- Multi-Payment Logic for Deposit Section ---
+        const addPaymentBtn = document.getElementById('add-payment-btn');
+        const paymentAccountSelect = document.getElementById('payment-account-selector');
+        const paymentAmountInput = document.getElementById('payment-amount-input');
+        const paymentItemsTable = document.getElementById('payment-items-table');
+        const noPaymentsRow = document.getElementById('no-payments-row');
+        const totalDepositEl = document.getElementById('total-deposit');
+        const hiddenPaymentsContainer = document.getElementById('hidden-payments-container');
+        let paymentItems = [];
+        let paymentItemIndex = 0;
+
+        addPaymentBtn.addEventListener('click', addPayment);
+        paymentItemsTable.addEventListener('click', e => {
+            if (e.target.closest('.remove-payment-btn')) {
+                const row = e.target.closest('tr');
+                removePayment(parseInt(row.dataset.index, 10));
+            }
+        });
+
+        function addPayment() {
+            const option = paymentAccountSelect.options[paymentAccountSelect.selectedIndex];
+            const amount = parseFloat(paymentAmountInput.value);
+            if (!option || !amount || amount <= 0) return;
+            paymentItems.push({ accountId: option.value, accountName: option.textContent, amount: amount, index: paymentItemIndex++ });
+            renderPaymentTable();
+            paymentAmountInput.value = '';
+        }
+        function removePayment(index) {
+            paymentItems = paymentItems.filter(p => p.index !== index);
+            renderPaymentTable();
+        }
+        function renderPaymentTable() {
+            paymentItemsTable.innerHTML = '';
+            hiddenPaymentsContainer.innerHTML = '';
+            let total = 0;
+            if (paymentItems.length === 0) paymentItemsTable.appendChild(noPaymentsRow);
+            else {
+                paymentItems.forEach((p, i) => {
+                    total += p.amount;
+                    const row = paymentItemsTable.insertRow();
+                    row.dataset.index = p.index;
+                    row.innerHTML = `<td>${p.accountName}</td><td class="text-end">₦${p.amount.toFixed(2)}</td><td class="text-center"><button type="button" class="btn btn-danger btn-sm remove-payment-btn">×</button></td>`;
+                    hiddenPaymentsContainer.innerHTML += `<input type="hidden" name="payments[${i}][account_id]" value="${p.accountId}"><input type="hidden" name="payments[${i}][amount]" value="${p.amount}">`;
+                });
+            }
+            totalDepositEl.textContent = `₦${total.toFixed(2)}`;
+        }
+
+        // --- Mini-POS Logic for Credit Sale Section (your existing code is good) ---
         const addItemBtn = document.getElementById('add-item-btn');
         const itemSelect = document.getElementById('inventory_item_selector');
         const quantityInput = document.getElementById('quantity_selector');
         const saleItemsTable = document.getElementById('sale-items-table');
         const grandTotalEl = document.getElementById('grand-total');
-        const hiddenInputsContainer = document.getElementById('hidden-inputs-container');
+        const hiddenItemsContainer = document.getElementById('hidden-items-container');
         const hiddenTotalAmountInput = document.getElementById('hidden-total-amount');
-
         let saleItems = [];
         let itemIndex = 0;
 
         addItemBtn.addEventListener('click', addItemToSale);
-
-        saleItemsTable.addEventListener('click', function(e) {
-            if (e.target && e.target.closest('.remove-item-btn')) {
-                const rowToRemove = e.target.closest('tr');
-                const indexToRemove = parseInt(rowToRemove.dataset.index, 10);
-                removeItemFromSale(indexToRemove);
+        saleItemsTable.addEventListener('click', e => {
+            if (e.target.closest('.remove-item-btn')) {
+                const row = e.target.closest('tr');
+                removeItemFromSale(parseInt(row.dataset.index, 10));
             }
         });
-
         function addItemToSale() {
-            const selectedOption = itemSelect.options[itemSelect.selectedIndex];
+            const option = itemSelect.options[itemSelect.selectedIndex];
             const quantity = parseFloat(quantityInput.value);
-            if (!selectedOption || selectedOption.value === "" || !quantity || quantity <= 0) {
-                alert('Please select an item and enter a valid quantity.');
-                return;
-            }
-            const price = parseFloat(selectedOption.getAttribute('data-price')) || 0;
-            const item = {
-                id: selectedOption.value, name: selectedOption.dataset.name,
-                price: price, quantity: quantity, index: itemIndex++
-            };
-            saleItems.push(item);
+            if (!option || !quantity || quantity <= 0) return;
+            saleItems.push({ id: option.value, name: option.dataset.name, price: parseFloat(option.dataset.price), quantity: quantity, index: itemIndex++ });
             renderSaleTable();
         }
-        
-        function removeItemFromSale(indexToRemove) {
-            saleItems = saleItems.filter(item => item.index !== indexToRemove);
+        function removeItemFromSale(index) {
+            saleItems = saleItems.filter(item => item.index !== index);
             renderSaleTable();
         }
-
         function renderSaleTable() {
             saleItemsTable.innerHTML = '';
-            hiddenInputsContainer.innerHTML = '';
+            hiddenItemsContainer.innerHTML = '';
             let total = 0;
-
-            if (saleItems.length === 0) {
-                 saleItemsTable.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No items added.</td></tr>';
-            } else {
+            if (saleItems.length === 0) saleItemsTable.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No items added.</td></tr>';
+            else {
                 saleItems.forEach((item, i) => {
                     const subtotal = item.price * item.quantity;
                     total += subtotal;
-                    const row = document.createElement('tr');
+                    const row = saleItemsTable.insertRow();
                     row.dataset.index = item.index;
-                    row.innerHTML = `
-                        <td>${item.name}</td>
-                        <td class="text-center">${item.quantity}</td>
-                        <td class="text-end">₦${subtotal.toFixed(2)}</td>
-                        <td class="text-center"><button type="button" class="btn btn-danger btn-sm remove-item-btn">×</button></td>
-                    `;
-                    saleItemsTable.appendChild(row);
-
-                    hiddenInputsContainer.innerHTML += `
-                        <input type="hidden" name="items[${i}][id]" value="${item.id}">
-                        <input type="hidden" name="items[${i}][quantity]" value="${item.quantity}">
-                    `;
+                    row.innerHTML = `<td>${item.name}</td><td class="text-center">${item.quantity}</td><td class="text-end">₦${subtotal.toFixed(2)}</td><td class="text-center"><button type="button" class="btn btn-danger btn-sm remove-item-btn">×</button></td>`;
+                    hiddenItemsContainer.innerHTML += `<input type="hidden" name="items[${i}][id]" value="${item.id}"><input type="hidden" name="items[${i}][quantity]" value="${item.quantity}">`;
                 });
             }
-
             grandTotalEl.textContent = `₦${total.toFixed(2)}`;
             hiddenTotalAmountInput.value = total.toFixed(2);
         }

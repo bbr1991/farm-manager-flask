@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Batch Expense Entry{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2"><i class="bi bi-receipt me-2"></i>Batch Expense Entry</h1>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form action="{{ url_for('batch_expense_post') }}" method="POST">
+            <div class="mb-3">
+                <label for="date" class="form-label">Transaction Date</label>
+                <input type="date" class="form-control" name="date" value="{{ today_date }}" required style="max-width: 250px;">
+            </div>
+            <hr>
+
+            <!-- DEBIT SECTION (Expense Lines) -->
+            <h5>Expenses (Debits)</h5>
+            <table class="table table-sm align-middle">
+                <thead class="table-light"><tr><th style="width: 35%;">Expense Account</th><th style="width: 20%;">Amount (₦)</th><th style="width: 45%;">Description</th><th></th></tr></thead>
+                <tbody id="debit-table-body"></tbody>
+                <tfoot>
+                    <tr><td colspan="4"><button type="button" class="btn btn-secondary btn-sm" id="add-debit-btn"><i class="bi bi-plus-lg"></i> Add Expense Line</button></td></tr>
+                    <tr class="table-group-divider"><th class="text-end">Total Debits:</th><th id="total-debits" class="fs-5">₦0.00</th><td colspan="2"></td></tr>
+                </tfoot>
+            </table>
+            <hr>
+
+            <!-- CREDIT SECTION (Payment Lines) -->
+            <h5>Payments (Credits)</h5>
+            <table class="table table-sm align-middle">
+                <thead class="table-light"><tr><th style="width: 35%;">Paid From (Cash/Bank)</th><th style="width: 20%;">Amount (₦)</th><th style="width: 45%;"></th><th></th></tr></thead>
+                <tbody id="credit-table-body"></tbody>
+                <tfoot>
+                    <tr><td colspan="4"><button type="button" class="btn btn-secondary btn-sm" id="add-credit-btn"><i class="bi bi-plus-lg"></i> Add Payment Line</button></td></tr>
+                    <tr class="table-group-divider"><th class="text-end">Total Credits:</th><th id="total-credits" class="fs-5">₦0.00</th><td colspan="2"></td></tr>
+                </tfoot>
+            </table>
+
+            <hr class="my-4">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+                <h4 id="balance-status" class="text-danger mb-0">Out of Balance: ₦0.00</h4>
+                <button type="submit" id="post-batch-btn" class="btn btn-primary btn-lg" disabled>Post Batch</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+    {{ super() }}
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Options for dropdowns
+        const expenseAccountOptions = `{% for acc in expense_accounts %}<option value="{{ acc.id }}">{{ acc.name }}</option>{% endfor %}`;
+        const assetAccountOptions = `{% for acc in asset_accounts %}<option value="{{ acc.id }}">{{ acc.name }}</option>{% endfor %}`;
+        
+        // Elements
+        const addDebitBtn = document.getElementById('add-debit-btn');
+        const debitTableBody = document.getElementById('debit-table-body');
+        const totalDebitsEl = document.getElementById('total-debits');
+        const addCreditBtn = document.getElementById('add-credit-btn');
+        const creditTableBody = document.getElementById('credit-table-body');
+        const totalCreditsEl = document.getElementById('total-credits');
+        const balanceStatusEl = document.getElementById('balance-status');
+        const postBatchBtn = document.getElementById('post-batch-btn');
+        let debitIndex = 0;
+        let creditIndex = 0;
+
+        // Generic row-adding function
+        function addRow(tableBody, index, name, options) {
+            const newRow = tableBody.insertRow();
+            newRow.innerHTML = `
+                <td><select class="form-select form-select-sm" name="${name}[${index}][account_id]" required>${options}</select></td>
+                <td><input type="number" step="0.01" class="form-control form-control-sm amount-input" name="${name}[${index}][amount]" required></td>
+                <td><input type="text" class="form-control form-control-sm" name="${name}[${index}][description]"></td>
+                <td><button type="button" class="btn btn-danger btn-sm remove-row-btn">×</button></td>
+            `;
+            return newRow;
+        }
+
+        // Generic total calculation
+        function calculateTotal(tableBody, totalEl) {
+            let total = 0;
+            tableBody.querySelectorAll('.amount-input').forEach(input => {
+                total += parseFloat(input.value) || 0;
+            });
+            totalEl.textContent = `₦${total.toFixed(2)}`;
+            return total;
+        }
+        
+        // Check balance and enable/disable post button
+        function checkBalance() {
+            const debits = calculateTotal(debitTableBody, totalDebitsEl);
+            const credits = calculateTotal(creditTableBody, totalCreditsEl);
+            const difference = debits - credits;
+
+            if (Math.abs(difference) < 0.01 && debits > 0) {
+                balanceStatusEl.textContent = 'Batch is Balanced';
+                balanceStatusEl.classList.remove('text-danger');
+                balanceStatusEl.classList.add('text-success');
+                postBatchBtn.disabled = false;
+            } else {
+                balanceStatusEl.textContent = `Out of Balance: ₦${difference.toFixed(2)}`;
+                balanceStatusEl.classList.remove('text-success');
+                balanceStatusEl.classList.add('text-danger');
+                postBatchBtn.disabled = true;
+            }
+        }
+        
+        // Event listeners
+        addDebitBtn.addEventListener('click', () => { addRow(debitTableBody, debitIndex++, 'debits', expenseAccountOptions); });
+        addCreditBtn.addEventListener('click', () => { addRow(creditTableBody, creditIndex++, 'credits', assetAccountOptions); });
+
+        debitTableBody.addEventListener('input', checkBalance);
+        creditTableBody.addEventListener('input', checkBalance);
+
+        document.querySelector('form').addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-row-btn')) {
+                e.target.closest('tr').remove();
+                checkBalance();
+            }
+        });
+
+        // Add initial rows
+        addRow(debitTableBody, debitIndex++, 'debits', expenseAccountOptions);
+        addRow(creditTableBody, creditIndex++, 'credits', assetAccountOptions);
+    });
+    </script>
+{% endblock %}

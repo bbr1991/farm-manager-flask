@@ -999,7 +999,6 @@ def customer_transaction():
     
     if request.method == 'POST':
         try:
-            # --- Common data for both transaction types ---
             tx_date = request.form.get('date')
             customer_id = int(request.form.get('customer_id'))
             tx_type = request.form.get('transaction_type')
@@ -1009,26 +1008,36 @@ def customer_transaction():
                 raise Exception("This customer does not have a linked receivable account.")
             customer_ar_id = customer['account_id']
 
-            # --- SMART LOGIC: Handle each transaction type separately ---
-            
             if tx_type == 'deposit':
-                # This block only runs for DEPOSITS (no inventory change)
-                payment_account_id = int(request.form.get('payment_account_id'))
-                amount = float(request.form.get('amount'))
-                description = request.form.get('description')
+                # --- NEW: Parse Multiple Payments ---
+                payments = []
+                i = 0
+                while True:
+                    account_id = request.form.get(f'payments[{i}][account_id]')
+                    if not account_id: break
+                    amount = float(request.form.get(f'payments[{i}][amount]'))
+                    payments.append({'account_id': int(account_id), 'amount': amount})
+                    i += 1
                 
-                debit_id, credit_id = payment_account_id, customer_ar_id
-                db.execute("""
-                    INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_contact_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (tx_date, description, debit_id, credit_id, amount, g.user.id, customer_id))
+                if not payments:
+                    raise Exception("No payment amounts were added for the deposit.")
+                
+                description = request.form.get('description') or f"Payment from {customer['name']}"
+
+                # Create a journal entry FOR EACH payment line
+                for payment in payments:
+                    payment_account_id = payment['account_id']
+                    payment_amount = payment['amount']
+                    db.execute("""
+                        INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_contact_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (tx_date, description, payment_account_id, customer_ar_id, payment_amount, g.user.id, customer_id))
 
             elif tx_type == 'credit_sale':
-                # This block only runs for CREDIT SALES (with inventory change)
+                # This section remains unchanged and works as before
                 total_amount = float(request.form.get('total_amount'))
                 description = f"Credit Sale to {customer['name']}"
                 
-                # --- NEW INVENTORY LOGIC (COPIED FROM add_sale_post) ---
                 packages_sold = []
                 i = 0
                 while True:
@@ -1038,8 +1047,7 @@ def customer_transaction():
                     packages_sold.append({'id': int(package_id), 'quantity': quantity_of_packages})
                     i += 1
                 
-                if not packages_sold:
-                    raise Exception("Cannot record a credit sale with no items.")
+                if not packages_sold: raise Exception("Cannot record a credit sale with no items.")
 
                 inventory_reduction_list = {}
                 for package in packages_sold:
@@ -1047,19 +1055,13 @@ def customer_transaction():
                     base_item_id = package_info['base_inventory_item_id']
                     pieces_to_reduce = package['quantity'] * package_info['quantity_per_package']
                     inventory_reduction_list[base_item_id] = inventory_reduction_list.get(base_item_id, 0) + pieces_to_reduce
-                # --- END OF NEW INVENTORY LOGIC ---
                 
-                # Debit Customer's A/R, Credit Sales Revenue
                 sales_revenue_id = db.execute("SELECT id FROM accounts WHERE name = 'Product Sales'").fetchone()['id']
-                debit_id, credit_id = customer_ar_id, sales_revenue_id
-                
-                cursor = db.cursor()
-                cursor.execute("""
+                db.execute("""
                     INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_contact_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (tx_date, description, debit_id, credit_id, total_amount, g.user.id, customer_id))
+                """, (tx_date, description, customer_ar_id, sales_revenue_id, total_amount, g.user.id, customer_id))
 
-                # Reduce inventory for each item sold
                 for item_id, total_pieces in inventory_reduction_list.items():
                     db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (total_pieces, item_id))
 
@@ -1075,21 +1077,166 @@ def customer_transaction():
             flash(f"An error occurred: {e}", "danger")
             return redirect(url_for('customer_transaction'))
 
-    # --- GET request logic (this is perfect as is) ---
+    # --- GET request logic (no changes needed) ---
+    customers = db.execute("SELECT * FROM contacts WHERE type = 'Customer' ORDER BY name").fetchall()
+    asset_accounts = db.execute("SELECT * FROM accounts WHERE type = 'Asset' AND name NOT LIKE 'A/R - %' ORDER BY name").fetchall()
+    packages_for_sale = db.execute("SELECT sp.* FROM sales_packages sp JOIN inventory i ON sp.base_inventory_item_id = i.id WHERE i.quantity >= sp.quantity_per_package").fetchall()
+    
+    return render_template('customer_transaction.html', user=g.user, customers=customers, asset_accounts=asset_accounts, inventory_items=packages_for_sale, today_date=date.today().strftime('%Y-%m-%d'))
+# In app.py, add these two new routes
+
+@app.route('/financials/batch-deposit')
+@login_required
+@permission_required('record_batch_deposit')
+def batch_deposit():
+    """Displays the batch customer deposit entry page."""
+    db = get_db()
     customers = db.execute("SELECT * FROM contacts WHERE type = 'Customer' ORDER BY name").fetchall()
     asset_accounts = db.execute("SELECT * FROM accounts WHERE type = 'Asset' AND name NOT LIKE 'A/R - %' ORDER BY name").fetchall()
     
-    # We must fetch the packages for sale here too
-    packages_for_sale = db.execute("""
-        SELECT sp.* FROM sales_packages sp
-        JOIN inventory i ON sp.base_inventory_item_id = i.id
-        WHERE i.quantity >= sp.quantity_per_package
-    """).fetchall()
+    return render_template(
+        'batch_deposit.html',
+        user=g.user,
+        customers=customers,
+        asset_accounts=asset_accounts,
+        today_date=date.today().strftime('%Y-%m-%d')
+    )
+
+@app.route('/financials/batch-deposit/post', methods=['POST'])
+@login_required
+@permission_required('record_batch_deposit')
+@check_day_closed('date')
+def batch_deposit_post():
+    """Processes the submission of multiple customer payments."""
+    db = get_db()
+    try:
+        deposit_date = request.form.get('date')
+        deposit_account_id = int(request.form.get('deposit_account_id'))
+
+        # --- Loop through all the submitted transaction lines ---
+        i = 0
+        total_batch_amount = 0
+        while True:
+            customer_id_str = request.form.get(f'tx[{i}][customer_id]')
+            amount_str = request.form.get(f'tx[{i}][amount]')
+            
+            # Stop when we run out of transaction lines
+            if not customer_id_str or not amount_str:
+                break
+
+            customer_id = int(customer_id_str)
+            amount = float(amount_str)
+            memo = request.form.get(f'tx[{i}][memo]')
+            
+            if amount > 0:
+                # Get the customer's specific A/R account
+                customer = db.execute("SELECT name, account_id FROM contacts WHERE id = ?", (customer_id,)).fetchone()
+                if not customer or not customer['account_id']:
+                    raise Exception(f"Customer '{customer['name'] if customer else 'ID ' + str(customer_id)}' does not have a linked receivable account.")
+                
+                customer_ar_id = customer['account_id']
+                description = f"Batch deposit: {memo}" if memo else f"Batch deposit from {customer['name']}"
+
+                # Create the journal entry for this one payment
+                db.execute("""
+                    INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_contact_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (deposit_date, description, deposit_account_id, customer_ar_id, amount, g.user.id, customer_id))
+                
+                total_batch_amount += amount
+            
+            i += 1
+        
+        if total_batch_amount == 0:
+            flash("No valid payment lines were entered.", "warning")
+            return redirect(url_for('batch_deposit'))
+
+        db.commit()
+        flash(f"Batch deposit of ₦{total_batch_amount:,.2f} with {i} transaction(s) posted successfully!", "success")
+
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred: {e}", "danger")
+
+    return redirect(url_for('batch_deposit'))
+@app.route('/financials/batch-expense')
+@login_required
+@permission_required('record_batch_expense')
+def batch_expense():
+    """Displays the batch expense entry page."""
+    db = get_db()
+    expense_accounts = db.execute("SELECT * FROM accounts WHERE type = 'Expense' AND is_active = 1 ORDER BY name").fetchall()
+    asset_accounts = db.execute("SELECT * FROM accounts WHERE type = 'Asset' AND name NOT LIKE 'A/R - %' ORDER BY name").fetchall()
     
-    return render_template('customer_transaction.html', user=g.user, customers=customers, asset_accounts=asset_accounts, inventory_items=packages_for_sale, today_date=date.today().strftime('%Y-%m-%d'))
+    return render_template(
+        'batch_expense.html',
+        user=g.user,
+        expense_accounts=expense_accounts,
+        asset_accounts=asset_accounts,
+        today_date=date.today().strftime('%Y-%m-%d')
+    )
 
-# In app.py, replace your old new_sale function with this one
+@app.route('/financials/batch-expense/post', methods=['POST'])
+@login_required
+@permission_required('record_batch_expense')
+@check_day_closed('date')
+def batch_expense_post():
+    db = get_db()
+    try:
+        tx_date = request.form.get('date')
+        
+        # --- Parse all debit and credit lines ---
+        debits = []
+        total_debits = 0
+        i = 0
+        while True:
+            account_id = request.form.get(f'debits[{i}][account_id]')
+            if not account_id: break
+            amount = float(request.form.get(f'debits[{i}][amount]'))
+            debits.append({'account_id': int(account_id), 'amount': amount, 'description': request.form.get(f'debits[{i}][description]')})
+            total_debits += amount
+            i += 1
 
+        credits = []
+        total_credits = 0
+        i = 0
+        while True:
+            account_id = request.form.get(f'credits[{i}][account_id]')
+            if not account_id: break
+            amount = float(request.form.get(f'credits[{i}][amount]'))
+            credits.append({'account_id': int(account_id), 'amount': amount, 'description': request.form.get(f'credits[{i}][description]')})
+            total_credits += amount
+            i += 1
+
+        # --- Server-side validation ---
+        if not debits or not credits:
+            raise Exception("Batch must contain at least one debit and one credit line.")
+        if abs(total_debits - total_credits) > 0.01:
+            raise Exception("Batch is out of balance. Total debits must equal total credits.")
+
+        # --- Create Journal Entries ---
+        # This is a compound entry. We'll create one entry for each line.
+        for debit in debits:
+            for credit in credits:
+                # This is a simplification. A more advanced system might create a single entry
+                # with multiple debit/credit legs, but that requires a more complex db schema.
+                # For now, we create entries proportional to the credit amounts.
+                proportional_amount = debit['amount'] * (credit['amount'] / total_credits)
+                if proportional_amount > 0:
+                    description = debit['description'] or "Batch expense entry"
+                    db.execute("""
+                        INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (tx_date, description, debit['account_id'], credit['account_id'], proportional_amount, g.user.id))
+
+        db.commit()
+        flash(f"Batch of ₦{total_debits:,.2f} posted successfully!", "success")
+
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred: {e}", "danger")
+
+    return redirect(url_for('batch_expense'))
 @app.route('/sales/new')
 @login_required
 @permission_required('record_new_sale') # Using the new, correct permission name
@@ -1127,22 +1274,12 @@ def new_sale():
 @permission_required('record_new_sale')
 @check_day_closed('date')
 def add_sale_post():
-    """
-    Handles a new sale, creating TWO journal entries:
-    1. For the revenue (Cash/AR vs Sales).
-    2. For the Cost of Goods Sold (COGS vs Inventory).
-    """
     db = get_db()
     try:
         sale_date = request.form.get('date')
         total_sale_amount = float(request.form.get('total_amount'))
-        
-        if g.user.cash_account_id:
-            payment_account_id = g.user.cash_account_id
-        else:
-            payment_account_id = int(request.form.get('debit_account_id'))
 
-        # --- Calculate Inventory Reduction and COST of Goods Sold ---
+        # --- Parse Sale Items (for COGS calculation) ---
         packages_sold = []
         i = 0
         while True:
@@ -1153,74 +1290,79 @@ def add_sale_post():
             i += 1
 
         if not packages_sold:
-            flash('Cannot record a sale with no items.', 'warning')
-            return redirect(url_for('new_sale'))
-            
+            raise Exception('Cannot record a sale with no items.')
+
+        # --- NEW: Parse Multiple Payments ---
+        payments = []
+        total_paid = 0
+        i = 0
+        while True:
+            account_id = request.form.get(f'payments[{i}][account_id]')
+            if not account_id: break
+            amount = float(request.form.get(f'payments[{i}][amount]'))
+            payments.append({'account_id': int(account_id), 'amount': amount})
+            total_paid += amount
+            i += 1
+        
+        # --- CRITICAL VALIDATION ---
+        if not payments:
+            raise Exception('No payments were applied to this sale.')
+        
+        # Use a small tolerance for floating point comparisons
+        if abs(total_paid - total_sale_amount) > 0.01:
+            raise Exception(f"Payment mismatch: Total paid (₦{total_paid:,.2f}) does not equal the grand total (₦{total_sale_amount:,.2f}).")
+
+        # --- Calculate COGS (same as before) ---
         inventory_reduction_list = {}
         total_cost_of_goods_sold = 0
-        
         for package in packages_sold:
-            # Fetch the base item's ID AND its current unit_cost
             package_info = db.execute("""
-                SELECT 
-                    sp.base_inventory_item_id, 
-                    sp.quantity_per_package,
-                    i.unit_cost
-                FROM sales_packages sp
-                JOIN inventory i ON sp.base_inventory_item_id = i.id
+                SELECT sp.base_inventory_item_id, sp.quantity_per_package, i.unit_cost
+                FROM sales_packages sp JOIN inventory i ON sp.base_inventory_item_id = i.id
                 WHERE sp.id = ?
             """, (package['id'],)).fetchone()
-            
             base_item_id = package_info['base_inventory_item_id']
             unit_cost = package_info['unit_cost'] or 0
-            
-            # Calculate how many individual pieces to reduce
             pieces_to_reduce = package['quantity'] * package_info['quantity_per_package']
-            
-            # Add to our list for updating the inventory table
             inventory_reduction_list[base_item_id] = inventory_reduction_list.get(base_item_id, 0) + pieces_to_reduce
-            
-            # ** NEW **: Calculate the cost of the items being sold
             total_cost_of_goods_sold += pieces_to_reduce * unit_cost
 
-        # --- Get Account IDs for Journal Entries ---
+        # --- Get Account IDs ---
         def get_account_id(name):
             account = db.execute("SELECT id FROM accounts WHERE name = ?", (name,)).fetchone()
-            if not account:
-                raise Exception(f"CRITICAL SETUP ERROR: Account '{name}' not found.")
+            if not account: raise Exception(f"CRITICAL SETUP ERROR: Account '{name}' not found.")
             return account['id']
-
         sales_revenue_id = get_account_id('Product Sales')
         cogs_expense_id = get_account_id('Cost of Goods Sold')
-        # IMPORTANT: This assumes your finished goods (like Eggs) are in an inventory
-        # account named 'Inventory - Eggs'. Change if necessary.
-        inventory_asset_id = get_account_id('Inventory - Eggs')
+        inventory_asset_id = get_account_id('Inventory - Eggs') # Note: This needs to be more robust for multiple inventory types.
 
         # --- DATABASE TRANSACTION ---
         
-        # ENTRY 1: Record the Revenue
-        description_revenue = f"Point of Sale transaction by {g.user.username}"
-        db.execute("""
-            INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (sale_date, description_revenue, payment_account_id, sales_revenue_id, total_sale_amount, g.user.id))
-        new_entry_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        # 1. Create a journal entry FOR EACH payment
+        for payment in payments:
+            payment_account_id = payment['account_id']
+            payment_amount = payment['amount']
+            description = f"POS transaction portion by {g.user.username}"
+            db.execute("""
+                INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (sale_date, description, payment_account_id, sales_revenue_id, payment_amount, g.user.id))
 
-        # ENTRY 2: Record the Cost of Goods Sold (if there is a cost)
+        # 2. Record the COGS entry (one entry for the total cost)
         if total_cost_of_goods_sold > 0:
-            description_cogs = f"COGS for Sale #{new_entry_id}"
+            description_cogs = f"COGS for POS transaction"
             db.execute("""
                 INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (sale_date, description_cogs, cogs_expense_id, inventory_asset_id, total_cost_of_goods_sold, g.user.id))
         
-        # Finally, update the physical inventory quantities
+        # 3. Update inventory quantities
         for item_id, total_pieces in inventory_reduction_list.items():
             db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (total_pieces, item_id))
         
         db.commit()
-        flash(f"Sale of ₦{total_sale_amount:,.2f} recorded and inventory updated!", 'success')
-        return redirect(url_for('sale_receipt', entry_id=new_entry_id))
+        flash(f"Sale of ₦{total_sale_amount:,.2f} recorded successfully with split payment.", 'success')
+        return redirect(url_for('new_sale')) # Redirect back to the sales page for the next customer
 
     except Exception as e:
         db.rollback()
