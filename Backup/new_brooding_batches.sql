@@ -1,0 +1,1 @@
+SELECT * FROM inventory_log WHERE log_date >= '2025-08-01';
