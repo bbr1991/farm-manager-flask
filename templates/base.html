@@ -89,16 +89,16 @@
                         {% if g.user.has_permission('view_general_journal') %}
                             <li><a href="{{ url_for('general_journal') }}">General Journal</a></li>
                         {% endif %}
-                        <!-- THIS IS THE NEW LINK -->
                         {% if g.user.has_permission('record_batch_deposit') %}
                             <li><a href="{{ url_for('batch_deposit') }}">Batch Deposits</a></li>
                         {% endif %}
                         {% if g.user.has_permission('record_batch_expense') %}
                             <li><a href="{{ url_for('batch_expense') }}">Batch Expenses</a></li>
                         {% endif %}
-                        <!-- END OF NEW LINK -->
                         {% if g.user.has_permission('view_reports_dashboard') %}
                             <li><a href="{{ url_for('reports_dashboard') }}">Reports Center</a></li>
+                            {# NEW: Add specific report links here for quick access #}
+                            <li><a href="{{ url_for('report_daily_egg_production_cost') }}">Daily Egg Production Cost Report</a></li> 
                         {% endif %}
                     </ul>
                 </li>

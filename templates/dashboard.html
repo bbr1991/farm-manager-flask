@@ -13,7 +13,7 @@
         </div>
     </div>
 
-    <!-- KPI (Key Performance Indicator) Stats Cards -->
+    <!-- Existing KPI (Key Performance Indicator) Stats Cards -->
     <div class="row">
         <div class="col-xl-4 col-md-6 mb-4">
             <div class="card kpi-card kpi-card-success shadow-sm h-100">
@@ -55,6 +55,47 @@
             </div>
         </div>
     </div>
+
+    <!-- NEW ROW FOR DAILY EGG PRODUCTION COSTS -->
+    <div class="row">
+        <div class="col-xl-12 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header py-3 bg-light d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-dark">Today's Egg Production Costs ({{ date.today().strftime('%Y-%m-%d') }})</h6>
+                    <a href="{{ url_for('report_daily_egg_production_cost', report_date=date.today().strftime('%Y-%m-%d')) }}" class="btn btn-sm btn-outline-info"><i class="bi bi-file-earmark-bar-graph me-1"></i> Full Report</a>
+                </div>
+                <div class="card-body">
+                    {% if stats.total_daily_flock_expenses > 0 %}
+                    <div class="row g-3">
+                        <div class="col-md-2">
+                            <div class="text-muted small">Feed</div>
+                            <strong>₦{{ '{:,.2f}'.format(stats.daily_feed_cost) }}</strong>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="text-muted small">Medication</div>
+                            <strong>₦{{ '{:,.2f}'.format(stats.daily_medication_cost) }}</strong>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="text-muted small">Labor</div>
+                            <strong>₦{{ '{:,.2f}'.format(stats.daily_labor_cost) }}</strong>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">Consultancy & Other</div>
+                            <strong>₦{{ '{:,.2f}'.format(stats.daily_consultancy_cost + stats.daily_other_cost) }}</strong>
+                        </div>
+                        <div class="col-md-3 text-end">
+                            <div class="text-muted small">TOTAL DAILY FLOCK EXPENSES</div>
+                            <h4 class="mb-0 text-danger">₦{{ '{:,.2f}'.format(stats.total_daily_flock_expenses) }}</h4>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center">No flock-related expenses recorded for today.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- END NEW ROW FOR DAILY EGG PRODUCTION COSTS -->
 
     <!-- Main Content Row (Charts and Actions) -->
     <div class="row">
@@ -107,9 +148,6 @@
 
 
 {% block scripts %}
-    {# This is the crucial line. It includes the parent template's scripts. #}
     {{ super() }} 
-    
-    <!-- This block now only contains the link to the dashboard-specific JS file -->
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

@@ -1,156 +1,227 @@
 {% extends "base.html" %}
+
 {% block title %}Record New Expense{% endblock %}
 
 {% block content %}
-    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">Record New Expense</h1>
-    </div>
-    <div class="card shadow-sm">
-        <div class="card-header"><h5 class="mb-0">Expense Details</h5></div>
-        <div class="card-body">
-            {# IMPORTANT: We must add the id="expense-form" here! #}
-            <form action="{{ url_for('add_expense_post') }}" method="POST" id="expense-form">
-                <div class="row g-3">
-                    <div class="col-md-6"><label for="date" class="form-label">Date</label><input type="date" class="form-control" id="date" name="date" required></div>
-                    <div class="col-md-6"><label for="contact_id" class="form-label">Paid To (Supplier)</label><select class="form-select" id="contact_id" name="contact_id"><option value="" selected>N/A</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></div>
-                    <div class="col-12"><label for="description" class="form-label">Description</label><input type="text" class="form-control" id="description" name="description" required placeholder="e.g., 50 bags of Starter Feed"></div>
-                    
-                    <div class="col-md-6">
-                        <label for="debit_account_id" class="form-label">Expense Category (Debit)</label>
-                        <select class="form-select" id="debit_account_id" name="debit_account_id" required>
-                            <option selected disabled value="">Choose expense type...</option>
-                            {% for acc in expense_accounts %}<option value="{{ acc.id }}" data-category="{{ acc.name.replace(' Expense', '') }}">{{ acc.name }}</option>{% endfor %}
-                        </select>
-                    </div>
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Record New Expense</h1>
+</div>
 
-                    <div class="col-md-6">
-                        <label for="credit_account_id" class="form-label">Paid From (Credit)</label>
-                        <select class="form-select" id="credit_account_id" name="credit_account_id" required>
-                             <option selected disabled value="">Choose payment source...</option>
-                            {% for acc in asset_accounts %}<option value="{{ acc.id }}">{{ acc.name }}</option>{% endfor %}
-                        </select>
-                    </div>
-                    
-                    <!-- Smart fields that appear when needed -->
-                    <div class="col-md-6" id="inventory_item_div" style="display: none;">
-                        <label for="inventory_item_id" class="form-label">Update Inventory Item Stock</label>
-                        <select class="form-select" id="inventory_item_id" name="inventory_item_id"></select>
-                    </div>
-                    <div class="col-md-3" id="quantity_div" style="display: none;">
-                        <label for="quantity_purchased" class="form-label">Quantity</label>
-                        <input type="number" class="form-control" id="quantity_purchased" name="quantity_purchased" step="any">
-                    </div>
-
-                    <div class="col-md-3">
-                        <label for="amount" class="form-label">Total Amount Paid (₦)</label>
-                        <input type="number" class="form-control" id="amount" name="amount" step="0.01" min="0.01" required>
-                    </div>
+<div class="card shadow-sm">
+    <div class="card-header"><h5 class="mb-0">Expense Details</h5></div>
+    <div class="card-body">
+        <form action="{{ url_for('add_expense_post') }}" method="POST" id="expense-form" class="needs-validation" novalidate>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="date" class="form-label">Date</label>
+                    <input type="date" class="form-control" id="date" name="date" value="{{ today_date }}" required autocomplete="off">
+                    <div class="invalid-feedback">Please select a date.</div>
                 </div>
-                <hr class="my-4">
-                <button class="btn btn-danger btn-lg" type="submit">Record Expense</button>
-                <a href="{{ url_for('dashboard') }}" class="btn btn-secondary btn-lg">Cancel</a>
-            </form>
-        </div>
+                <div class="col-md-6">
+                    <label for="contact_id" class="form-label">Paid To (Supplier)</label>
+                    <select class="form-select" id="contact_id" name="contact_id" autocomplete="off">
+                        <option value="" selected>N/A</option>
+                        {% for s in suppliers %}
+                            <option value="{{ s.id }}">{{ s.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="col-12">
+                    <label for="description" class="form-label">Description</label>
+                    <input type="text" class="form-control" id="description" name="description" required placeholder="e.g., 50 bags of Starter Feed" autocomplete="off">
+                    <div class="invalid-feedback">Please provide a description.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label for="debit_account_id" class="form-label">Expense Category (Debit)</label>
+                    <select class="form-select" id="debit_account_id" name="debit_account_id" required autocomplete="off">
+                        <option selected disabled value="">Choose expense type...</option>
+                        {# `data-inventory-category` is used by JS to filter inventory items #}
+                        {% for acc in expense_accounts %}
+                            <option value="{{ acc.id }}" data-inventory-category="{{ acc.data_inventory_category }}">{{ acc.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="invalid-feedback">Please select an expense category.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label for="credit_account_id" class="form-label">Paid From (Credit)</label>
+                    <select class="form-select" id="credit_account_id" name="credit_account_id" required autocomplete="off">
+                         <option selected disabled value="">Choose payment source...</option>
+                        {% for acc in asset_accounts %}<option value="{{ acc.id }}">{{ acc.name }}</option>{% endfor %}
+                    </select>
+                    <div class="invalid-feedback">Please select a payment source.</div>
+                </div>
+                
+                {# NEW: Related Flock Dropdown #}
+                <div class="col-md-6">
+                    <label for="related_flock_id" class="form-label">Related Flock (Optional)</label>
+                    <select class="form-select" id="related_flock_id" name="related_flock_id" autocomplete="off">
+                        <option value="" selected>N/A</option>
+                        {% for flock in active_flocks %}
+                            <option value="{{ flock.id }}">{{ flock.flock_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Smart fields that appear when needed -->
+                <div class="col-md-6" id="inventory_item_div" style="display: none;">
+                    <label for="inventory_item_id" class="form-label">Update Inventory Item Stock</label>
+                    <select class="form-select" id="inventory_item_id" name="inventory_item_id" autocomplete="off">
+                        <option value="" selected>Select item...</option>
+                        {# Options will be populated by JavaScript #}
+                    </select>
+                    <div class="invalid-feedback">Please select an inventory item.</div>
+                </div>
+                <div class="col-md-3" id="quantity_div" style="display: none;">
+                    <label for="quantity_purchased" class="form-label">Quantity</label>
+                    <input type="number" class="form-control" id="quantity_purchased" name="quantity_purchased" step="any" min="0" autocomplete="off">
+                    <div class="invalid-feedback">Please enter a valid quantity.</div>
+                </div>
+
+                <div class="col-md-3">
+                    <label for="amount" class="form-label">Total Amount Paid (₦)</label>
+                    <input type="number" class="form-control" id="amount" name="amount" step="0.01" min="0.01" required inputmode="numeric" autocomplete="off">
+                    <div class="invalid-feedback">Please enter a valid amount (e.g., 100.00).</div>
+                </div>
+            </div>
+            <hr class="my-4">
+            <button class="btn btn-danger btn-lg" type="submit">Record Expense</button>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary btn-lg">Cancel</a>
+        </form>
     </div>
+</div>
 {% endblock %}
 
-
-{# This is the one and only scripts block #}
 {% block scripts %}
-{# <script src="{{ url_for('static', filename='js/idb.js') }}"></script> #}
-    {# First, call super() to get Bootstrap, etc. from base.html #}
-    {{ super() }}
+{{ super() }}
 
-    {# Second, add your original smart script for inventory fields #}
-    <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const expenseForm = document.getElementById('expense-form'); // Give your form an id="expense-form"
-    
-    expenseForm.addEventListener('submit', function(event) {
-        // We stop the form from submitting the normal way.
-        event.preventDefault();
+<script src="{{ url_for('static', filename='js/idb.js') }}"></script>
 
-        // Check if the browser is online.
-        if (navigator.onLine) {
-            // If online, submit the form to the server as usual.
-            console.log('Online, submitting form to server...');
-            this.submit();
-        } else {
-            // If OFFLINE, we save the data locally.
-            console.log('Offline, saving transaction to local database...');
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        console.log("DOM fully loaded and parsed for expense form logic.");
+
+        const expenseForm = document.getElementById('expense-form');
+        const debitAccountSelect = document.getElementById('debit_account_id');
+        const inventoryItemDiv = document.getElementById('inventory_item_div');
+        const inventoryItemSelect = document.getElementById('inventory_item_id');
+        const quantityDiv = document.getElementById('quantity_div');
+        const quantityInput = document.getElementById('quantity_purchased');
+
+        // Categories from 'data-inventory-category' on expense_accounts that should trigger inventory fields
+        // Adjust these strings to match the `data-inventory-category` values you defined in the Flask route
+        const INVENTORY_TRIGGER_CATEGORIES = ['Feed', 'Medication', 'General Goods', 'Water Production']; 
+
+        // `inventory_items_json` is passed from Flask and is a JSON string of all inventory items
+        const allInventoryItems = JSON.parse('{{ inventory_items_json | safe }}');
+
+        /**
+         * Populates the inventory item dropdown based on the selected expense category.
+         */
+        function populateInventoryItemsDropdown(selectedCategory) {
+            inventoryItemSelect.innerHTML = '<option value="" selected>Select item...</option>'; // Clear existing options
+
+            const filteredItems = allInventoryItems.filter(item => 
+                item.category === selectedCategory
+            );
             
-            // 1. Get all the data from the form.
-            const formData = new FormData(this);
-            const data = Object.fromEntries(formData.entries());
-            
-            // 2. Save it to our offline database.
-            saveTransactionOffline({
-                type: 'expense',
-                data: data 
-            })
-            .then(() => {
-                // 3. Ask the Service Worker to sync when it gets a connection.
-                return navigator.serviceWorker.ready;
-            })
-            .then(swRegistration => {
-                return swRegistration.sync.register('sync-pending-expenses');
-            })
-            .then(() => {
-                alert('You are offline. Your expense has been saved and will be uploaded automatically when you reconnect.');
-                // Redirect the user back to the dashboard.
-                window.location.href = "{{ url_for('dashboard') }}";
-            })
-            .catch(err => {
-                console.error('Offline save failed:', err);
-                alert('Could not save your expense offline. Please try again.');
-            });
+            // If the exact category match returns no items, and the selected category is a trigger,
+            // try to show all items belonging to any trigger category.
+            // This provides flexibility if your expense category "Feed" maps to Inventory items with "Feed" category.
+            // If your mapping is different, refine this logic.
+            if (filteredItems.length === 0 && INVENTORY_TRIGGER_CATEGORIES.includes(selectedCategory)) {
+                allInventoryItems.filter(item => INVENTORY_TRIGGER_CATEGORIES.includes(item.category)).forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item.id;
+                    option.textContent = item.name + ` (${item.category})`; // Show category for clarity
+                    inventoryItemSelect.appendChild(option);
+                });
+            } else {
+                filteredItems.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item.id;
+                    option.textContent = item.name;
+                    inventoryItemSelect.appendChild(option);
+                });
+            }
         }
-    });
-});
-</script>
 
-    {# Third, add our new offline database and form handling logic #}
-    <script src="{{ url_for('static', filename='js/idb.js') }}"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', (event) => {
-            console.log("DOM fully loaded and parsed for offline logic.");
+        /**
+         * Toggles the visibility and required status of inventory-related fields.
+         */
+        function toggleInventoryFields() {
+            const selectedOption = debitAccountSelect.options[debitAccountSelect.selectedIndex];
+            const expenseCategory = selectedOption ? selectedOption.dataset.inventoryCategory : '';
 
-            const expenseForm = document.getElementById('expense-form');
-            if (!expenseForm) {
-                console.error("Critical error: Could not find #expense-form!");
+            if (INVENTORY_TRIGGER_CATEGORIES.includes(expenseCategory)) {
+                inventoryItemDiv.style.display = 'block';
+                quantityDiv.style.display = 'block';
+                inventoryItemSelect.setAttribute('required', 'required');
+                quantityInput.setAttribute('required', 'required');
+                quantityInput.setAttribute('min', '0.01'); 
+                populateInventoryItemsDropdown(expenseCategory);
+            } else {
+                inventoryItemDiv.style.display = 'none';
+                quantityDiv.style.display = 'none';
+                inventoryItemSelect.removeAttribute('required');
+                quantityInput.removeAttribute('required');
+                quantityInput.removeAttribute('min');
+                inventoryItemSelect.value = '';
+                quantityInput.value = '';
+                inventoryItemSelect.classList.remove('is-invalid');
+                quantityInput.classList.remove('is-invalid');
+            }
+        }
+
+        debitAccountSelect.addEventListener('change', toggleInventoryFields);
+        toggleInventoryFields(); // Initial call
+
+        // Unified Form Submission Logic (Online/Offline)
+        expenseForm.addEventListener('submit', (submitEvent) => {
+            submitEvent.preventDefault();
+
+            if (!expenseForm.checkValidity()) {
+                expenseForm.classList.add('was-validated');
+                console.log("Form validation failed.");
                 return;
             }
 
-            expenseForm.addEventListener('submit', (submitEvent) => {
-                submitEvent.preventDefault(); // Always prevent default submission
-
-                if (navigator.onLine) {
-                    console.log("Network status: ONLINE. Submitting to server.");
-                    expenseForm.submit();
-                } else {
-                    console.log("Network status: OFFLINE. Saving to IndexedDB.");
-                    const formData = new FormData(expenseForm);
-                    const expenseData = {
-                        date: formData.get('date'),
-                        description: formData.get('description'),
-                        amount: formData.get('amount'),
-                        payment_account_id: formData.get('credit_account_id'), // Correct field name
-                        expense_category_id: formData.get('debit_account_id')  // Correct field name
-                    };
-                    
-                    saveExpense(expenseData)
-                        .then(() => navigator.serviceWorker.ready)
-                        .then(registration => registration.sync.register('sync-new-expenses'))
-                        .then(() => {
-                            alert("You are offline. Expense saved locally and will sync automatically when you reconnect.");
-                            window.location.href = "{{ url_for('dashboard') }}";
-                        })
-                        .catch(error => {
-                            console.error("Error saving expense locally:", error);
-                            alert("Could not save the expense locally. Check console for errors.");
-                        });
-                }
-            });
+            if (navigator.onLine) {
+                console.log("Network status: ONLINE. Submitting form to server.");
+                expenseForm.submit();
+            } else {
+                console.log("Network status: OFFLINE. Saving expense to local IndexedDB.");
+                
+                const formData = new FormData(expenseForm);
+                const expenseData = {
+                    date: formData.get('date'),
+                    contact_id: formData.get('contact_id') || null,
+                    description: formData.get('description'),
+                    debit_account_id: formData.get('debit_account_id'),
+                    credit_account_id: formData.get('credit_account_id'),
+                    amount: formData.get('amount'),
+                    related_flock_id: formData.get('related_flock_id') || null, // Include related flock ID
+                    inventory_item_id: (inventoryItemDiv.style.display !== 'none' && formData.get('inventory_item_id')) ? formData.get('inventory_item_id') : null,
+                    quantity_purchased: (quantityDiv.style.display !== 'none' && formData.get('quantity_purchased')) ? formData.get('quantity_purchased') : null,
+                    timestamp: new Date().toISOString(),
+                    status: 'pending_offline' 
+                };
+                
+                saveExpense(expenseData)
+                    .then(() => navigator.serviceWorker.ready)
+                    .then(registration => registration.sync.register('sync-new-expenses'))
+                    .then(() => {
+                        alert("You are offline. Your expense has been saved locally and will be uploaded automatically when you reconnect.");
+                        window.location.href = "{{ url_for('dashboard') }}";
+                    })
+                    .catch(error => {
+                        console.error("Error saving expense locally:", error);
+                        alert("Could not save the expense offline. Check console for errors.");
+                    });
+            }
         });
-    </script>
+    });
+</script>
 {% endblock %}

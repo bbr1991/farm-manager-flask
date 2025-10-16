@@ -1,0 +1,70 @@
+{# Create a new file: templates/report_daily_egg_production_cost.html #}
+{% extends "base.html" %}
+{% block title %}{{ report_title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom no-print">
+    <h1 class="h2"><i class="bi bi-egg-fill me-2"></i>{{ report_title }}</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <form action="{{ url_for('report_daily_egg_production_cost') }}" method="GET" class="d-flex align-items-center me-2">
+            <label for="report_date" class="form-label mb-0 me-2">Date:</label>
+            <input type="date" class="form-control form-control-sm me-2" id="report_date" name="report_date" value="{{ report_date }}">
+            <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-arrow-right-circle-fill"></i> Go</button>
+        </form>
+        <button onclick="window.print()" class="btn btn-sm btn-outline-secondary"><i class="bi bi-printer-fill me-2"></i>Print</button>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">Summary for {{ data.report_date }}</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4"><strong>Total Eggs Collected:</strong> {{ data.total_eggs_collected }} pieces</div>
+            <div class="col-md-4"><strong>Total Daily Production Cost:</strong> ₦{{ '{:,.2f}'.format(data.total_daily_cost) }}</div>
+            <div class="col-md-4"><strong>Cost Per Egg:</strong> ₦{{ '{:,.2f}'.format(data.cost_per_egg) }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">Daily Flock Expenses</h5>
+    </div>
+    <div class="card-body">
+        {% if data.daily_flock_expenses %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th>Category</th>
+                        <th>Flock</th>
+                        <th class="text-end">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for expense in data.daily_flock_expenses %}
+                    <tr>
+                        <td>{{ expense.description }}</td>
+                        <td>{{ expense.expense_category }}</td>
+                        <td>{{ expense.flock_name or 'N/A' }}</td>
+                        <td class="text-end">₦{{ '{:,.2f}'.format(expense.amount) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="3" class="text-end">Grand Total Daily Expenses:</th>
+                        <th class="text-end">₦{{ '{:,.2f}'.format(data.total_daily_cost) }}</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center">No flock-related expenses found for {{ data.report_date }}.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

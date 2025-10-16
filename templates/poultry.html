@@ -45,9 +45,11 @@
                             <td><strong>{{ flock.flock_name }}</strong></td><td>{{ flock.breed }}</td><td class="text-center">{{ flock.bird_count }}</td><td>{{ flock.acquisition_date }}</td>
                             <td class="text-center">
                                 <div class="btn-group btn-group-sm">
-                                    {# NOTE: The Log Feed button is tied to the 'log_poultry_eggs' permission as it is part of the same process. #}
                                     {% if g.user.has_permission('log_poultry_eggs') %}
                                     <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#logFeedModal" data-flock-id="{{ flock.id }}" data-flock-name="{{ flock.flock_name }}">Log Feed</button>
+                                    {% endif %}
+                                    {% if g.user.has_permission('log_inventory_usage') %} {# Using general inventory usage permission #}
+                                    <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#logMedicationModal" data-flock-id="{{ flock.id }}" data-flock-name="{{ flock.flock_name }}">Log Medication</button>
                                     {% endif %}
                                     {% if g.user.has_permission('log_poultry_mortality') %}
                                     <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#logFlockMortalityModal" data-flock-id="{{ flock.id }}" data-flock-name="{{ flock.flock_name }}">Log Mortality</button>
@@ -86,8 +88,6 @@
         </div>
     </div>
                             
-    <!-- All Modals can remain exactly as they were -->
-    <!-- ... (paste your entire modals section here) ... -->
     <!-- ====================================================== -->
     <!-- MODALS -->
     <!-- ====================================================== -->
@@ -118,7 +118,7 @@
                 <form action="{{ url_for('add_egg_log') }}" method="POST">
                     <div class="modal-header"><h5 class="modal-title">Log Daily Egg Production</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                     <div class="modal-body">
-                        <p class="text-muted small">This form calculates the new average cost of eggs based on the feed consumed.</p>
+                        <p class="text-muted small">This form records egg production and the feed consumed directly for that production day to calculate the average cost of eggs.</p>
                         <div class="row g-3">
                             <div class="col-md-6"><label class="form-label">Date</label><input type="date" class="form-control" name="log_date" id="egg_log_date" required></div>
                             <div class="col-md-6">
@@ -162,6 +162,29 @@
                         <input type="hidden" name="flock_id" id="feedFlockId">
                         <input type="hidden" name="log_date" value="{{ today_date }}">
                         <div class="mb-3"><label class="form-label">Feed Item</label><select class="form-select" name="inventory_item_id" required><option value="" disabled selected>-- Select feed --</option>{% for item in feed_items %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></div>
+                        <div class="mb-3"><label class="form-label">Quantity Used</label><input type="number" step="any" class="form-control" name="quantity_used" required></div>
+                    </div>
+                   <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-info">Log Usage</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Log Medication Usage Modal -->
+    <div class="modal fade" id="logMedicationModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form action="{{ url_for('log_inventory_usage') }}" method="POST">
+                    <div class="modal-header"><h5 class="modal-title">Log Medication for: <span id="medicationFlockName" class="text-primary"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                    <div class="modal-body">
+                        <input type="hidden" name="flock_id" id="medicationFlockId">
+                        <input type="hidden" name="log_date" value="{{ today_date }}">
+                        <div class="mb-3"><label class="form-label">Medication Item</label>
+                            <select class="form-select" name="inventory_item_id" required>
+                                <option value="" disabled selected>-- Select medication --</option>
+                                {% for item in medication_items %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}
+                            </select>
+                        </div>
                         <div class="mb-3"><label class="form-label">Quantity Used</label><input type="number" step="any" class="form-control" name="quantity_used" required></div>
                     </div>
                    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-info">Log Usage</button></div>
@@ -231,6 +254,7 @@
             
             // Initialize all modals that need flock data
             setupModal('logFeedModal', '#feedFlockName', '#feedFlockId');
+            setupModal('logMedicationModal', '#medicationFlockName', '#medicationFlockId'); // NEW LINE
             setupModal('logFlockMortalityModal', '#mortalityFlockName', '#mortalityFlockId');
             setupModal('deactivateFlockModal', '#deactivateFlockName', '#deactivateFlockId');
 
@@ -247,4 +271,4 @@
             if (mortalityLogDate) mortalityLogDate.value = today;
         });
     </script>
-{% endblock %}
+{% endblock %}```

@@ -1,52 +1,95 @@
 {% extends "base.html" %}
-{% block title %}{% if user %}{{ user.farm_name }}{% endif %} - Record New Purchase{% endblock %}
+{% block title %}Record New Purchase{% endblock %}
 
 {% block content %}
-    <h2 class="mb-4">Record New Purchase or Expense</h2>
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Record New Purchase</h1>
+    </div>
+
     <div class="card shadow-sm">
-        <div class="card-header"><h5 class="mb-0">Purchase/Expense Details</h5></div>
+        <div class="card-header"><h5 class="mb-0">Purchase Details</h5></div>
         <div class="card-body">
-            <form action="{{ url_for('add_purchase_post') }}" method="POST">
+            {# IMPORTANT: We must add the id="expense-form" here for PWA offline functionality! #}
+            {# Use novalidate to let JS handle custom validation/offline logic first #}
+            <form action="{{ url_for('add_expense_post') }}" method="POST" id="expense-form" class="needs-validation" novalidate>
                 <div class="row g-3">
-                    <div class="col-md-6"><label for="date" class="form-label">Date</label><input type="date" class="form-control" id="date" name="date" required></div>
-                    <div class="col-md-6"><label for="contact_id" class="form-label">Supplier (Optional)</label><select class="form-select" id="contact_id" name="contact_id"><option value="" selected>None</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></div>
-                    <div class="col-12"><label for="description" class="form-label">Description</label><input type="text" class="form-control" id="description" name="description" required></div>
-                    
                     <div class="col-md-6">
-                        <label for="debit_account_id" class="form-label">Expense Type (Debit)</label>
-                        <select class="form-select" id="debit_account_id" name="debit_account_id" required>
-                            <option selected disabled value="">Choose...</option>
-                            {% for acc in expense_accounts %}<option value="{{ acc.id }}" data-category="{{ acc.name.replace(' Expense', '') }}">{{ acc.name }}</option>{% endfor %}
+                        <label for="date" class="form-label">Date</label>
+                        <input type="date" class="form-control" id="date" name="date" value="{{ today_date }}" required autocomplete="off">
+                        <div class="invalid-feedback">Please select a date.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="contact_id" class="form-label">Paid To (Supplier)</label>
+                        <select class="form-select" id="contact_id" name="contact_id" autocomplete="off">
+                            <option value="" selected>N/A</option>
+                            {% for s in suppliers %}
+                                <option value="{{ s.id }}">{{ s.name }}</option>
+                            {% endfor %}
                         </select>
                     </div>
+                    
+                    <div class="col-12">
+                        <label for="description" class="form-label">Description</label>
+                        <input type="text" class="form-control" id="description" name="description" required placeholder="e.g., 50 bags of Starter Feed" autocomplete="off">
+                        <div class="invalid-feedback">Please provide a description.</div>
+                    </div>
 
-                    <!-- This dropdown is now controlled more carefully by JavaScript -->
-                    <div class="col-md-6" id="inventory_item_div" style="display: none;">
-                        <label for="inventory_item_id" class="form-label">Update Inventory Item</label>
-                        <select class="form-select" id="inventory_item_id" name="inventory_item_id">
-                            <!-- The options will be added by JS -->
+                    <div class="col-md-6">
+                        <label for="debit_account_id" class="form-label">Purchase Category (Debit)</label>
+                        <select class="form-select" id="debit_account_id" name="debit_account_id" required autocomplete="off">
+                            <option selected disabled value="">Choose purchase type...</option>
+                            {# `data-inventory-category` is used by JS to filter inventory items. #}
+                            {# This maps expense accounts to their general inventory categories. #}
+                            {% for acc in expense_accounts %}
+                                <option value="{{ acc.id }}" data-inventory-category="{{ acc.data_inventory_category }}">{{ acc.name }}</option>
+                            {% endfor %}
                         </select>
+                        <div class="invalid-feedback">Please select a purchase category.</div>
                     </div>
 
                     <div class="col-md-6">
                         <label for="credit_account_id" class="form-label">Paid From (Credit)</label>
-                        <select class="form-select" id="credit_account_id" name="credit_account_id" required>
+                        <select class="form-select" id="credit_account_id" name="credit_account_id" required autocomplete="off">
+                            <option selected disabled value="">Choose payment source...</option>
                             {% for acc in asset_accounts %}<option value="{{ acc.id }}">{{ acc.name }}</option>{% endfor %}
                         </select>
+                        <div class="invalid-feedback">Please select a payment source.</div>
                     </div>
                     
-                    {# --- NEW AND UPDATED FIELDS --- #}
-                    <div class="col-md-3" id="quantity_div" style="display: none;">
-                        <label for="quantity_purchased" class="form-label">Quantity Purchased</label>
-                        <input type="number" class="form-control" id="quantity_purchased" name="quantity_purchased" step="any" placeholder="e.g., 10">
+                    {# NEW: Related Flock Dropdown (Optional, for linking purchases to flocks) #}
+                    <div class="col-md-6">
+                        <label for="related_flock_id" class="form-label">Related Flock (Optional)</label>
+                        <select class="form-select" id="related_flock_id" name="related_flock_id" autocomplete="off">
+                            <option value="" selected>N/A</option>
+                            {% for flock in active_flocks %}
+                                <option value="{{ flock.id }}">{{ flock.flock_name }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
+
+                    <!-- Smart fields that appear when needed -->
+                    <div class="col-md-3" id="inventory_item_div" style="display: none;">
+                        <label for="inventory_item_id" class="form-label">Update Inventory Item Stock</label>
+                        <select class="form-select" id="inventory_item_id" name="inventory_item_id" autocomplete="off">
+                            <option value="" selected>Select item...</option>
+                            {# Options will be populated by JavaScript #}
+                        </select>
+                        <div class="invalid-feedback">Please select an inventory item.</div>
+                    </div>
+                    <div class="col-md-3" id="quantity_div" style="display: none;">
+                        <label for="quantity_purchased" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="quantity_purchased" name="quantity_purchased" step="any" min="0.01" required placeholder="e.g., 10">
+                        <div class="invalid-feedback">Please enter a valid quantity.</div>
+                    </div>
+
                     <div class="col-md-3">
                         <label for="amount" class="form-label">Total Amount Paid (₦)</label>
-                        <input type="number" class="form-control" id="amount" name="amount" step="0.01" min="0.01" required>
+                        <input type="number" class="form-control" id="amount" name="amount" step="0.01" min="0.01" required inputmode="numeric" autocomplete="off">
+                        <div class="invalid-feedback">Please enter a valid amount (e.g., 100.00).</div>
                     </div>
                 </div>
                 <hr class="my-4">
-                <button class="btn btn-danger btn-lg" type="submit">Record Expense</button>
+                <button class="btn btn-danger btn-lg" type="submit">Record Purchase</button>
                 <a href="{{ url_for('dashboard') }}" class="btn btn-secondary btn-lg">Cancel</a>
             </form>
         </div>
@@ -54,47 +97,151 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const expenseSelect = document.getElementById('debit_account_id');
-        const inventoryDiv = document.getElementById('inventory_item_div');
-        const inventorySelect = document.getElementById('inventory_item_id');
-        const quantityDiv = document.getElementById('quantity_div'); // Get the quantity div
-        const allInventoryItems = {{ inventory_items | tojson }};
+    {{ super() }}
+    
+    {# Include idb.js for offline database functionality #}
+    <script src="{{ url_for('static', filename='js/idb.js') }}"></script>
 
-        function updateInventoryDropdown() {
-            const selectedOption = expenseSelect.options[expenseSelect.selectedIndex];
-            const category = selectedOption.getAttribute('data-category');
-            const relevantItems = allInventoryItems.filter(item => item.category === category);
+    <script>
+        document.addEventListener('DOMContentLoaded', (event) => {
+            console.log("DOM fully loaded and parsed for purchase form logic.");
 
-            // Always clear previous options
-            inventorySelect.innerHTML = '';
-            // Add the default "Don't update" option
-            inventorySelect.add(new Option("Don't update inventory", ""));
+            const purchaseForm = document.getElementById('expense-form'); // Renamed for consistency
+            const debitAccountSelect = document.getElementById('debit_account_id');
+            const inventoryItemDiv = document.getElementById('inventory_item_div');
+            const inventoryItemSelect = document.getElementById('inventory_item_id');
+            const quantityDiv = document.getElementById('quantity_div');
+            const quantityInput = document.getElementById('quantity_purchased');
+            const amountInput = document.getElementById('amount');
 
-            if (relevantItems.length > 0) {
-                inventoryDiv.style.display = 'block';
-                relevantItems.forEach(item => {
-                    inventorySelect.add(new Option(item.name, item.id));
-                });
-            } else {
-                inventoryDiv.style.display = 'none';
+            // Categories from 'data-inventory-category' on debit_account_id options that should trigger inventory fields
+            const INVENTORY_TRIGGER_CATEGORIES = ['Feed', 'Medication', 'General Goods', 'Water Production', 'Equipment', 'Produce', 'Other']; 
+
+            // `inventory_items_json` is passed from Flask and is a JSON string of all inventory items
+            const allInventoryItems = JSON.parse('{{ inventory_items_json | safe }}');
+
+            /**
+             * Populates the inventory item dropdown based on the selected purchase category.
+             */
+            function populateInventoryItemsDropdown(selectedCategory) {
+                inventoryItemSelect.innerHTML = '<option value="" selected>Select item...</option>'; // Clear existing options
+
+                const filteredItems = allInventoryItems.filter(item => 
+                    item.category === selectedCategory
+                );
+                
+                // If no exact match, try to show relevant items from trigger categories.
+                if (filteredItems.length === 0 && INVENTORY_TRIGGER_CATEGORIES.includes(selectedCategory)) {
+                    allInventoryItems.filter(item => INVENTORY_TRIGGER_CATEGORIES.includes(item.category)).forEach(item => {
+                        const option = document.createElement('option');
+                        option.value = item.id;
+                        option.textContent = item.name + ` (${item.category})`; // Show category for clarity
+                        inventoryItemSelect.appendChild(option);
+                    });
+                } else {
+                    filteredItems.forEach(item => {
+                        const option = document.createElement('option');
+                        option.value = item.id;
+                        option.textContent = item.name;
+                        inventoryItemSelect.appendChild(option);
+                    });
+                }
             }
-            // Trigger a change event to update the quantity field visibility
-            inventorySelect.dispatchEvent(new Event('change'));
-        }
 
-        function updateQuantityVisibility() {
-            // If a valid item ID is selected (not the empty "" option)
-            if (inventorySelect.value) {
-                quantityDiv.style.display = 'block';
-            } else {
-                quantityDiv.style.display = 'none';
+            /**
+             * Toggles the visibility and required status of inventory-related fields.
+             */
+            function toggleInventoryFields() {
+                const selectedOption = debitAccountSelect.options[debitAccountSelect.selectedIndex];
+                const purchaseCategory = selectedOption ? selectedOption.dataset.inventoryCategory : '';
+
+                if (INVENTORY_TRIGGER_CATEGORIES.includes(purchaseCategory)) {
+                    inventoryItemDiv.style.display = 'block';
+                    quantityDiv.style.display = 'block';
+                    // Make inventory item and quantity required when visible
+                    inventoryItemSelect.setAttribute('required', 'required');
+                    quantityInput.setAttribute('required', 'required');
+                    quantityInput.setAttribute('min', '0.01'); // Ensure quantity is positive
+                    populateInventoryItemsDropdown(purchaseCategory); // Populate dropdown
+                } else {
+                    inventoryItemDiv.style.display = 'none';
+                    quantityDiv.style.display = 'none';
+                    // Remove required attribute when hidden
+                    inventoryItemSelect.removeAttribute('required');
+                    quantityInput.removeAttribute('required');
+                    quantityInput.removeAttribute('min');
+                    inventoryItemSelect.value = ''; // Clear selection
+                    quantityInput.value = ''; // Clear value
+                    // Clear validation states
+                    inventoryItemSelect.classList.remove('is-invalid');
+                    quantityInput.classList.remove('is-invalid');
+                }
             }
-        }
 
-        expenseSelect.addEventListener('change', updateInventoryDropdown);
-        inventorySelect.addEventListener('change', updateQuantityVisibility);
-    });
-</script>
+            // Event listener for debit account change to toggle inventory fields
+            debitAccountSelect.addEventListener('change', toggleInventoryFields);
+
+            // Initial call to set the correct state on page load
+            toggleInventoryFields();
+
+
+            // Set default date for date input
+            const today = new Date().toISOString().split('T')[0];
+            const dateInput = document.getElementById('date');
+            if (dateInput && !dateInput.value) {
+                dateInput.value = today;
+            }
+
+            // Unified Form Submission Logic (Online/Offline)
+            purchaseForm.addEventListener('submit', (submitEvent) => {
+                submitEvent.preventDefault(); // Always prevent default submission
+
+                // Bootstrap form validation for all visible required fields
+                if (!purchaseForm.checkValidity()) {
+                    purchaseForm.classList.add('was-validated'); // Add Bootstrap validation styling
+                    console.log("Form validation failed.");
+                    return; // Stop submission if validation fails
+                }
+
+                if (navigator.onLine) {
+                    console.log("Network status: ONLINE. Submitting form to server.");
+                    // If online, let the browser submit the form normally
+                    purchaseForm.submit();
+                } else {
+                    console.log("Network status: OFFLINE. Saving purchase to local IndexedDB.");
+                    
+                    const formData = new FormData(purchaseForm);
+                    const purchaseData = {
+                        date: formData.get('date'),
+                        contact_id: formData.get('contact_id') || null, 
+                        description: formData.get('description'),
+                        debit_account_id: formData.get('debit_account_id'),
+                        credit_account_id: formData.get('credit_account_id'),
+                        amount: formData.get('amount'),
+                        related_flock_id: formData.get('related_flock_id') || null, 
+                        inventory_item_id: (inventoryItemDiv.style.display !== 'none' && formData.get('inventory_item_id')) ? formData.get('inventory_item_id') : null,
+                        quantity_purchased: (quantityDiv.style.display !== 'none' && formData.get('quantity_purchased')) ? formData.get('quantity_purchased') : null,
+                        timestamp: new Date().toISOString(),
+                        status: 'pending_offline' 
+                    };
+                    
+                    // Assuming saveExpense function exists in idb.js and handles storage
+                    // We're using 'expense' type in saveTransactionOffline to match generic offline sync
+                    saveExpense(purchaseData) // Assuming 'saveExpense' handles generic transactions
+                        .then(() => navigator.serviceWorker.ready)
+                        .then(registration => {
+                            return registration.sync.register('sync-pending-purchases'); // Use a different sync tag if you want
+                        })
+                        .then(() => {
+                            alert('You are offline. Your purchase has been saved and will be uploaded automatically when you reconnect.');
+                            window.location.href = "{{ url_for('dashboard') }}";
+                        })
+                        .catch(err => {
+                            console.error('Offline save failed:', err);
+                            alert('Could not save your purchase offline. Please try again.');
+                        });
+                }
+            });
+        });
+    </script>
 {% endblock %}
