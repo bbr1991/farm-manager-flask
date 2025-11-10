@@ -1,1 +1,0 @@
-ALTER TABLE contacts ADD COLUMN assigned_user_id INTEGER REFERENCES users(id);

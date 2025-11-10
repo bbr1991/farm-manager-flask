@@ -573,8 +573,7 @@ def dashboard():
         LEFT JOIN accounts acc ON je.credit_account_id = acc.id OR je.debit_account_id = acc.id
     """).fetchone()
 
-    poultry_stats_row = db.execute("SELECT (SELECT COALESCE(SUM(bird_count), 0) FROM poultry_flocks WHERE status = 'Active') as total_active_birds, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date = date('now', 'localtime')) as eggs_today, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date >= date('now', '-6 days')) as eggs_last_7_days").fetchone()
-    
+    poultry_stats_row = db.execute("SELECT (SELECT COALESCE(SUM(current_chick_count), 0) FROM poultry_flocks WHERE status = 'Active') as total_active_birds, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date = date('now', 'localtime')) as eggs_today, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date >= date('now', '-6 days')) as eggs_last_7_days").fetchone()    
     total_income = financial_summary['total_income'] or 0
     total_expenses = financial_summary['total_expenses'] or 0
 
@@ -675,7 +674,7 @@ def inventory_dashboard():
 def poultry_dashboard():
     db = get_db()
     
-    poultry_stats_row = db.execute("SELECT (SELECT COALESCE(SUM(bird_count), 0) FROM poultry_flocks WHERE status = 'Active') as total_active_birds, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date = date('now', 'localtime')) as eggs_today, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date >= date('now', '-6 days')) as eggs_last_7_days").fetchone()
+    poultry_stats_row = db.execute("SELECT (SELECT COALESCE(SUM(current_chick_count), 0) FROM poultry_flocks WHERE status = 'Active') as total_active_birds, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date = date('now', 'localtime')) as eggs_today, (SELECT COALESCE(SUM(quantity), 0) FROM egg_log WHERE log_date >= date('now', '-6 days')) as eggs_last_7_days").fetchone()
     total_active_birds = poultry_stats_row['total_active_birds'] or 0
     eggs_today = poultry_stats_row['eggs_today'] or 0
     stats = {
@@ -685,8 +684,25 @@ def poultry_dashboard():
         'avg_production_rate': (eggs_today / total_active_birds) if total_active_birds > 0 else 0
     }
 
-    active_flocks = db.execute("SELECT * FROM poultry_flocks WHERE status = 'Active' ORDER BY acquisition_date DESC").fetchall()
-    inactive_flocks = db.execute("SELECT * FROM poultry_flocks WHERE status = 'Inactive' ORDER BY acquisition_date DESC").fetchall()
+    active_flocks = db.execute("""
+    SELECT
+        id, flock_name, breed, acquisition_date, status,
+        initial_chick_count, current_chick_count as bird_count,
+        initial_cost, cost_per_bird, transfer_date, final_chick_count, final_total_cost, final_sale_price, net_profit
+    FROM poultry_flocks
+    WHERE status = 'Active' ORDER BY acquisition_date DESC
+""").fetchall()
+
+    inactive_flocks = db.execute("""
+    SELECT
+        id, flock_name, breed, acquisition_date, status,
+        initial_chick_count, current_chick_count as bird_count,
+        initial_cost, cost_per_bird, transfer_date, final_chick_count, final_total_cost, final_sale_price, net_profit
+    FROM poultry_flocks
+    WHERE status = 'Inactive' ORDER BY acquisition_date DESC
+""").fetchall()
+
+    # Fetch recent egg logs - this was missing in your provided snippet, re-added for completeness
     egg_logs = db.execute("SELECT el.*, pf.flock_name FROM egg_log el JOIN poultry_flocks pf ON el.flock_id = pf.id ORDER BY el.log_date DESC, el.id DESC LIMIT 10").fetchall()
 
     feed_items = db.execute(
@@ -704,12 +720,11 @@ def poultry_dashboard():
         stats=stats, 
         active_flocks=active_flocks, 
         inactive_flocks=inactive_flocks,
-        egg_logs=egg_logs,
+        egg_logs=egg_logs, # Ensure egg_logs is passed
         feed_items=feed_items,
-        medication_items=medication_items, # <-- Passing new list here
+        medication_items=medication_items,
         today_date=date.today().strftime('%Y-%m-%d')
     )
-
 @app.route('/water')
 @login_required
 @permission_required('view_water_dashboard')
@@ -2861,8 +2876,8 @@ def add_flock_post():
 
         db = get_db()
         db.execute("""
-            INSERT INTO poultry_flocks (flock_name, breed, acquisition_date, bird_count, status)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO poultry_flocks (flock_name, breed, acquisition_date, initial_chick_count, current_chick_count, status)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (name, breed, acq_date, bird_count, status))
         db.commit()
 
@@ -3845,16 +3860,274 @@ def add_contact():
         flash(f"An error occurred: {e}", "danger")
     
     return redirect(url_for('contacts_dashboard'))
+# In app.py
+# ... existing imports ...
+from datetime import date, timedelta, datetime # Make sure datetime is imported
+
+# ... existing get_db(), get_account_id(), User class, decorators ...
 
 # ==============================================================================
-# 16. ERROR HANDLERS & MAIN EXECUTION
+# 16. Phone Charging Service Routes (NEW SECTION)
+# ==============================================================================
+@app.route('/phone_charging')
+@login_required
+@permission_required('manage_phone_charging')
+def phone_charging_dashboard():
+    db = get_db()
+    
+    # Get available cards
+    available_cards = db.execute("SELECT * FROM charging_cards WHERE is_available = 1 ORDER BY code").fetchall()
+    
+    # Get current charging transactions
+    charging_transactions = db.execute("""
+        SELECT 
+            ct.*, cc.code as card_code, u.username as created_by_username
+        FROM charging_transactions ct
+        JOIN charging_cards cc ON ct.card_id = cc.id
+        JOIN users u ON ct.created_by_user_id = u.id
+        WHERE ct.status IN ('charging', 'ready')
+        ORDER BY ct.check_in_time DESC
+    """).fetchall()
+
+    # Get overdue transactions (e.g., after 24 hours without collection)
+    overdue_cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat(sep=' ', timespec='seconds')
+    overdue_transactions = db.execute("""
+        SELECT 
+            ct.*, cc.code as card_code, u.username as created_by_username
+        FROM charging_transactions ct
+        JOIN charging_cards cc ON ct.card_id = cc.id
+        JOIN users u ON ct.created_by_user_id = u.id
+        WHERE ct.status IN ('charging', 'ready') AND ct.check_in_time < ?
+        ORDER BY ct.check_in_time DESC
+    """, (overdue_cutoff,)).fetchall()
+
+    return render_template(
+        'phone_charging.html',
+        user=g.user,
+        available_cards=available_cards,
+        charging_transactions=charging_transactions,
+        overdue_transactions=overdue_transactions,
+        today_date=date.today().strftime('%Y-%m-%d'), # already passed
+        # ADD THIS LINE:
+        datetime=datetime # Pass the datetime module to the template
+    )
+@app.route('/phone_charging/check_in', methods=['POST'])
+@login_required
+@permission_required('manage_phone_charging')
+@check_day_closed('check_in_time') # Assuming form has a 'check_in_time' field
+def phone_charging_check_in():
+    db = get_db()
+    try:
+        card_code = request.form.get('card_code').strip()
+        client_name = request.form.get('client_name').strip()
+        client_phone = request.form.get('client_phone').strip() or None
+        phone_description = request.form.get('phone_description').strip()
+        imei_number = request.form.get('imei_number').strip() or None
+        fee = float(request.form.get('fee', 0)) # Charging fee
+        check_in_time = request.form.get('check_in_time') or datetime.utcnow().isoformat(sep=' ', timespec='seconds')
+
+        if not all([card_code, client_name, phone_description]):
+            flash('Card ID, Client Name, and Phone Description are required.', 'warning')
+            return redirect(url_for('phone_charging_dashboard'))
+
+        # 1. Get/Check Charging Card
+        card = db.execute("SELECT id, is_available FROM charging_cards WHERE code = ?", (card_code,)).fetchone()
+        if not card:
+            flash(f"Charging Card '{card_code}' not found in the system. Please add it first.", 'danger')
+            return redirect(url_for('phone_charging_dashboard'))
+        if not card['is_available']:
+            flash(f"Charging Card '{card_code}' is currently in use. Please select an available card.", 'danger')
+            return redirect(url_for('phone_charging_dashboard'))
+        
+        # 2. Get/Create Client (Optional, for history)
+        client_id = None
+        if client_phone:
+            client = db.execute("SELECT id FROM clients WHERE phone_number = ?", (client_phone,)).fetchone()
+            if client:
+                client_id = client['id']
+            else:
+                cursor = db.cursor()
+                cursor.execute("INSERT INTO clients (name, phone_number) VALUES (?, ?)", (client_name, client_phone))
+                client_id = cursor.lastrowid
+        
+        # 3. Get Charging Fee Account
+        fee_account_id = get_account_id('Phone Charging Revenue', acc_type='Revenue', create_if_not_found=True)
+
+        # 4. Create Charging Transaction
+        cursor = db.cursor()
+        cursor.execute("""
+            INSERT INTO charging_transactions 
+            (card_id, client_id, client_name, client_phone, phone_description, imei_number, check_in_time, status, fee, fee_account_id, created_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'charging', ?, ?, ?)
+        """, (card['id'], client_id, client_name, client_phone, phone_description, imei_number, check_in_time, fee, fee_account_id, g.user.id))
+        transaction_id = cursor.lastrowid
+
+        # 5. Mark Card as Issued
+        db.execute("UPDATE charging_cards SET is_available = 0 WHERE id = ?", (card['id'],))
+
+        # 6. Record Journal Entry for Fee (if any)
+        if fee > 0:
+            # Assuming payment is taken immediately for the fee
+            # We'll credit Phone Charging Revenue and debit Cash on Hand (or user's cash account)
+            debit_account_id = g.user.cash_account_id or get_account_id('Cash on Hand', acc_type='Asset')
+            db.execute("""
+                INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (date.today().strftime('%Y-%m-%d'), f"Phone charging fee for {client_name}", debit_account_id, fee_account_id, fee, g.user.id))
+
+        db.commit()
+        flash(f"Phone for {client_name} (Card: {card_code}) checked in successfully!", 'success')
+
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred during check-in: {e}", 'danger')
+    
+    return redirect(url_for('phone_charging_dashboard'))
+
+@app.route('/phone_charging/check_out', methods=['POST'])
+@login_required
+@permission_required('manage_phone_charging')
+@check_day_closed('check_out_time') # Assuming form has a 'check_out_time' field, or use today's date
+def phone_charging_check_out():
+    db = get_db()
+    try:
+        card_code = request.form.get('card_code').strip()
+        check_out_time = request.form.get('check_out_time') or datetime.utcnow().isoformat(sep=' ', timespec='seconds')
+
+        if not card_code:
+            flash('Card ID is required for check-out.', 'warning')
+            return redirect(url_for('phone_charging_dashboard'))
+        
+        # 1. Get Card and Transaction
+        card = db.execute("SELECT id FROM charging_cards WHERE code = ?", (card_code,)).fetchone()
+        if not card:
+            flash(f"Charging Card '{card_code}' not found in the system.", 'danger')
+            return redirect(url_for('phone_charging_dashboard'))
+        
+        transaction = db.execute("""
+            SELECT * FROM charging_transactions 
+            WHERE card_id = ? AND status IN ('charging', 'ready')
+            ORDER BY check_in_time DESC LIMIT 1
+        """, (card['id'],)).fetchone()
+
+        if not transaction:
+            flash(f"No active charging transaction found for Card '{card_code}'.", 'danger')
+            return redirect(url_for('phone_charging_dashboard'))
+        
+        # 2. Update Transaction Status and Card Availability
+        db.execute("""
+            UPDATE charging_transactions 
+            SET status = 'collected', check_out_time = ?, collected_by_user_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (check_out_time, g.user.id, transaction['id']))
+        
+        db.execute("UPDATE charging_cards SET is_available = 1 WHERE id = ?", (card['id'],))
+
+        db.commit()
+        flash(f"Phone for {transaction['client_name']} (Card: {card_code}) collected successfully!", 'success')
+
+    except Exception as e:
+        db.rollback()
+        flash(f"An error occurred during check-out: {e}", 'danger')
+    
+    return redirect(url_for('phone_charging_dashboard'))
+
+@app.route('/phone_charging/add_card', methods=['POST'])
+@login_required
+@permission_required('manage_phone_charging')
+def phone_charging_add_card():
+    db = get_db()
+    try:
+        card_code = request.form.get('card_code').strip()
+        if not card_code:
+            flash("Card Code is required.", 'warning')
+            return redirect(url_for('phone_charging_dashboard'))
+        
+        # Check for duplicate
+        existing_card = db.execute("SELECT id FROM charging_cards WHERE code = ?", (card_code,)).fetchone()
+        if existing_card:
+            flash(f"Card with code '{card_code}' already exists.", 'danger')
+            return redirect(url_for('phone_charging_dashboard'))
+        
+        db.execute("INSERT INTO charging_cards (code) VALUES (?)", (card_code,))
+        db.commit()
+        flash(f"Charging Card '{card_code}' added successfully!", 'success')
+    except Exception as e:
+        db.rollback()
+        flash(f"Error adding card: {e}", 'danger')
+    return redirect(url_for('phone_charging_dashboard'))
+
+@app.route('/phone_charging/delete_card/<int:card_id>', methods=['POST'])
+@login_required
+@permission_required('manage_phone_charging')
+def phone_charging_delete_card(card_id):
+    db = get_db()
+    try:
+        # Check if card is in use
+        card_in_use = db.execute("SELECT id FROM charging_cards WHERE id = ? AND is_available = 0", (card_id,)).fetchone()
+        if card_in_use:
+            flash("Cannot delete card: it is currently issued to a client.", 'danger')
+            return redirect(url_for('phone_charging_dashboard'))
+        
+        # Check for any historical transactions
+        has_transactions = db.execute("SELECT id FROM charging_transactions WHERE card_id = ?", (card_id,)).fetchone()
+        if has_transactions:
+            flash("Cannot delete card: it has transaction history. Consider marking it inactive instead.", 'danger')
+            return redirect(url_for('phone_charging_dashboard'))
+
+        db.execute("DELETE FROM charging_cards WHERE id = ?", (card_id,))
+        db.commit()
+        flash("Charging card deleted successfully.", 'success')
+    except Exception as e:
+        db.rollback()
+        flash(f"Error deleting card: {e}", 'danger')
+    return redirect(url_for('phone_charging_dashboard'))
+@app.route('/phone_charging/bulk_add_cards', methods=['POST'])
+@login_required
+@permission_required('manage_phone_charging')
+def phone_charging_bulk_add_cards():
+    db = get_db()
+    try:
+        card_codes_raw = request.form.get('card_codes_list')
+        if not card_codes_raw:
+            flash("No card codes provided.", 'warning')
+            return redirect(url_for('phone_charging_dashboard'))
+        
+        # Split by newline and clean up
+        card_codes = [c.strip() for c in card_codes_raw.split('\n') if c.strip()]
+        
+        if not card_codes:
+            flash("No valid card codes found in the list.", 'warning')
+            return redirect(url_for('phone_charging_dashboard'))
+
+        newly_added = 0
+        duplicates_skipped = 0
+        
+        for code in card_codes:
+            existing_card = db.execute("SELECT id FROM charging_cards WHERE code = ?", (code,)).fetchone()
+            if existing_card:
+                duplicates_skipped += 1
+            else:
+                db.execute("INSERT INTO charging_cards (code) VALUES (?)", (code,))
+                newly_added += 1
+        
+        db.commit()
+        flash(f"Bulk add successful: {newly_added} cards added, {duplicates_skipped} duplicates skipped.", 'success')
+
+    except Exception as e:
+        db.rollback()
+        flash(f"Error during bulk card addition: {e}", 'danger')
+    return redirect(url_for('phone_charging_dashboard'))
+
+# ==============================================================================
+# 17. ERROR HANDLERS & MAIN EXECUTION
 # ==============================================================================
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template('404.html'), 404
 
 # ==============================================================================
-# 17. API ROUTES FOR OFFLINE SYNC
+# 18. API ROUTES FOR OFFLINE SYNC
 # ==============================================================================
 
 @app.route('/api/sync/expense', methods=['POST'])

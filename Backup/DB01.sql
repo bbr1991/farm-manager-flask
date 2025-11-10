@@ -1,1 +1,0 @@
-ALTER TABLE water_products ADD COLUMN inventory_item_id INTEGER REFERENCES inventory(id);

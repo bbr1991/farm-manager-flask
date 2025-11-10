@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+{% block title %}Phone Charging Service{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="bi bi-phone-vibrate me-2"></i>Phone Charging Service</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        {% if g.user.has_permission('manage_phone_charging') %}
+        <button type="button" class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#checkInModal"><i class="bi bi-plus-circle-fill"></i> Check-In Phone</button>
+        <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#checkOutModal"><i class="bi bi-box-arrow-right"></i> Check-Out Phone</button>
+        <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#manageCardsModal"><i class="bi bi-credit-card"></i> Manage Cards</button>
+        {% endif %}
+    </div>
+</div>
+
+{# --- Available Cards --- #}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light"><h5 class="mb-0">Available Charging Cards</h5></div>
+    <div class="card-body">
+        {% if available_cards %}
+            <div class="d-flex flex-wrap gap-2">
+                {% for card in available_cards %}
+                    <span class="badge bg-success p-2">{{ card.code }}</span>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted text-center">No charging cards currently available.</p>
+        {% endif %}
+    </div>
+</div>
+
+{# --- Phones Currently Charging --- #}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light"><h5 class="mb-0">Phones Currently Charging</h5></div>
+    <div class="card-body">
+        {% if charging_transactions %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Card ID</th>
+                        <th>Client Name</th>
+                        <th>Phone Description</th>
+                        <th>IMEI</th>
+                        <th>Check-In Time</th>
+                        <th>Status</th>
+                        <th class="text-end">Fee (₦)</th>
+                        <th>Checked In By</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in charging_transactions %}
+                    <tr class="{{ 'table-warning' if tx in overdue_transactions }}">
+                        <td><strong>{{ tx.card_code }}</strong></td>
+                        <td>{{ tx.client_name }}</td>
+                        <td>{{ tx.phone_description }}</td>
+                        <td>{{ tx.imei_number or 'N/A' }}</td>
+                        <td>{{ tx.check_in_time }}</td>
+                        <td>
+                            <span class="badge {{ 'bg-primary' if tx.status == 'charging' else 'bg-info' if tx.status == 'ready' else 'bg-warning' if tx in overdue_transactions else 'bg-secondary' }}">
+                                {{ tx.status.capitalize() }}
+                            </span>
+                            {% if tx in overdue_transactions %}<span class="badge bg-danger ms-1">OVERDUE</span>{% endif %}
+                        </td>
+                        <td class="text-end">₦{{ '{:,.2f}'.format(tx.fee) }}</td>
+                        <td>{{ tx.created_by_username }}</td>
+                        <td class="text-center">
+                            {# You could add a quick check-out button here too if desired #}
+                            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#checkOutModal" data-card-code="{{ tx.card_code }}">Quick Collect</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center">No phones currently charging.</p>
+        {% endif %}
+    </div>
+</div>
+
+{# --- MODALS --- #}
+
+<!-- Check-In Phone Modal -->
+<div class="modal fade" id="checkInModal" tabindex="-1" aria-labelledby="checkInModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="checkInModalLabel">Check-In New Phone for Charging</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('phone_charging_check_in') }}" method="POST">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="card_code" class="form-label">Charging Card ID</label>
+                            <input type="text" class="form-control" id="card_code" name="card_code" placeholder="Scan or Enter Card ID" required autofocus>
+                            <small class="text-muted">Ensure this card is available.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="client_name" class="form-label">Client Name</label>
+                            <input type="text" class="form-control" id="client_name" name="client_name" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="client_phone" class="form-label">Client Phone Number (Optional)</label>
+                            <input type="text" class="form-control" id="client_phone" name="client_phone">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="fee" class="form-label">Charging Fee (₦)</label>
+                            <input type="number" class="form-control" id="fee" name="fee" value="0" step="0.01" min="0">
+                        </div>
+                        <div class="col-12">
+                            <label for="phone_description" class="form-label">Phone Description</label>
+                            <input type="text" class="form-control" id="phone_description" name="phone_description" placeholder="e.g., Red Samsung A20, cracked screen" required>
+                            <small class="text-muted">Be specific for verification.</small>
+                        </div>
+                        <div class="col-12">
+                            <label for="imei_number" class="form-label">IMEI Number (Optional, for security)</label>
+                            <input type="text" class="form-control" id="imei_number" name="imei_number" placeholder="Dial *#06# to get IMEI">
+                            <small class="text-danger">Highly recommended for proof of ownership.</small>
+                        </div>
+                        <input type="hidden" name="check_in_time" value="{{ datetime.utcnow().isoformat(sep=' ', timespec='seconds') }}">
+                    </div>
+                    <hr class="my-4">
+                    <button type="submit" class="btn btn-success">Check-In Phone</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Check-Out Phone Modal -->
+<div class="modal fade" id="checkOutModal" tabindex="-1" aria-labelledby="checkOutModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="checkOutModalLabel">Check-Out Phone</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('phone_charging_check_out') }}" method="POST">
+                    <div class="mb-3">
+                        <label for="checkout_card_code" class="form-label">Charging Card ID</label>
+                        <input type="text" class="form-control" id="checkout_card_code" name="card_code" placeholder="Scan or Enter Card ID" required autofocus>
+                    </div>
+                    <input type="hidden" name="check_out_time" value="{{ datetime.utcnow().isoformat(sep=' ', timespec='seconds') }}">
+                    <hr>
+                    <p class="text-danger">Ensure client's identity and phone details match the system records before handing over the phone.</p>
+                    <button type="submit" class="btn btn-primary">Check-Out Phone</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Manage Cards Modal -->
+<div class="modal fade" id="manageCardsModal" tabindex="-1" aria-labelledby="manageCardsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="manageCardsModalLabel">Manage Charging Cards</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6>Add New Card</h6>
+                <form action="{{ url_for('phone_charging_add_card') }}" method="POST" class="mb-4">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" name="card_code" placeholder="Enter new unique Card ID" required>
+                        <button class="btn btn-success" type="submit">Add Card</button>
+                    </div>
+                </form>
+
+                <h6>Existing Cards</h6>
+                {% if available_cards or charging_transactions %}
+                <ul class="list-group">
+                    {% for card in available_cards %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            {{ card.code }} <span class="badge bg-success">Available</span>
+                            <form action="{{ url_for('phone_charging_delete_card', card_id=card.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete card {{ card.code }}?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </li>
+                    {% endfor %}
+                    {% for tx in charging_transactions %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            {{ tx.card_code }} <span class="badge bg-warning">Issued (In Use)</span>
+                            {# Cannot delete a card that is in use #}
+                        </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted">No cards in the system yet.</p>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Bulk Add Cards Modal -->
+<div class="modal fade" id="bulkAddCardsModal" tabindex="-1" aria-labelledby="bulkAddCardsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="bulkAddCardsModalLabel">Bulk Add Charging Cards</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('phone_charging_bulk_add_cards') }}" method="POST">
+                    <div class="mb-3">
+                        <label for="card_codes_list" class="form-label">List of Card Codes (one per line)</label>
+                        <textarea class="form-control" id="card_codes_list" name="card_codes_list" rows="10" placeholder="CHG0001&#10;CHG0002&#10;..."></textarea>
+                        <small class="text-muted">Paste your generated card codes here, one code per line.</small>
+                    </div>
+                    <hr>
+                    <button type="submit" class="btn btn-success">Add Cards in Bulk</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Also, add a button to open this modal, e.g., in the Manage Cards Modal #}
+{# Inside the "Manage Cards Modal", e.g., below "Add New Card" form #}
+<div class="modal-body">
+    <h6>Add New Card</h6>
+    <form action="{{ url_for('phone_charging_add_card') }}" method="POST" class="mb-4">
+        <div class="input-group mb-3">
+            <input type="text" class="form-control" name="card_code" placeholder="Enter new unique Card ID" required>
+            <button class="btn btn-success" type="submit">Add Card</button>
+        </div>
+    </form>
+    
+    <div class="mb-4">
+        <button type="button" class="btn btn-outline-primary w-100" data-bs-toggle="modal" data-bs-target="#bulkAddCardsModal">
+            <i class="bi bi-upload me-2"></i> Bulk Add Cards
+        </button>
+    </div>
+
+    <h6>Existing Cards</h6>
+    {# ... rest of existing cards list ... #}
+</div>
+{% endblock %}
+
+{% block scripts %}
+    {{ super() }}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set current time for check-in/out modals if not already set by backend (for JS fallback)
+            const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' '); // YYYY-MM-DD HH:MM:SS
+            
+            const checkInTimeInput = document.querySelector('#checkInModal input[name="check_in_time"]');
+            if (checkInTimeInput && !checkInTimeInput.value) {
+                checkInTimeInput.value = currentTime;
+            }
+
+            const checkOutTimeInput = document.querySelector('#checkOutModal input[name="check_out_time"]');
+            if (checkOutTimeInput && !checkOutTimeInput.value) {
+                checkOutTimeInput.value = currentTime;
+            }
+
+            // Populate checkout modal with card code if quick collect button is used
+            const checkOutModal = document.getElementById('checkOutModal');
+            if (checkOutModal) {
+                checkOutModal.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget; // Button that triggered the modal
+                    const cardCode = button.getAttribute('data-card-code'); // Extract info from data-* attributes
+
+                    const cardCodeInput = checkOutModal.querySelector('#checkout_card_code');
+                    if (cardCodeInput && cardCode) {
+                        cardCodeInput.value = cardCode;
+                        cardCodeInput.focus(); // Focus for immediate scanning/submission
+                    } else if (cardCodeInput) {
+                        cardCodeInput.value = ''; // Clear if not quick collect
+                    }
+                });
+            }
+
+            // Optional: Focus on card_code input when check-in/out modals open
+            document.getElementById('checkInModal').addEventListener('shown.bs.modal', function () {
+                document.getElementById('card_code').focus();
+            });
+            document.getElementById('checkOutModal').addEventListener('shown.bs.modal', function () {
+                document.getElementById('checkout_card_code').focus();
+            });
+        });
+    </script>
+{% endblock %}

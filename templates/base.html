@@ -57,6 +57,9 @@
                 {% if g.user.has_permission('view_inventory_dashboard') %}
                     <li><a href="{{ url_for('inventory_dashboard') }}" class="{% if 'inventory' in request.endpoint %}active{% endif %}"><i class="bi bi-boxes"></i>Inventory</a></li>
                 {% endif %}
+                {% if g.user.has_permission('manage_phone_charging') %}
+                    <li><a href="{{ url_for('phone_charging_dashboard') }}" class="{% if 'phone_charging' in request.endpoint %}active{% endif %}"><i class="bi bi-phone-fill"></i>Phone Charging</a></li>
+                {% endif %}
                 {% if g.user.has_permission('view_sales_packages') %}
                     <li><a href="{{ url_for('manage_sales_packages') }}" class="{% if request.endpoint == 'manage_sales_packages' %}active{% endif %}"><i class="bi bi-tags-fill"></i>Sales Packages</a></li>
                 {% endif %}
