@@ -1504,46 +1504,40 @@ def new_expense():
     db = get_db()
     suppliers = db.execute("SELECT * FROM contacts WHERE type = 'Supplier' ORDER BY name ASC").fetchall()
     
-    # Prepare expense_accounts to include data-inventory-category for frontend JS
+    # Expense Accounts
     expense_accounts_raw = db.execute("SELECT id, name, type FROM accounts WHERE type = 'Expense' AND is_active = 1 ORDER BY name ASC").fetchall()
     expense_accounts_processed = []
     for acc in expense_accounts_raw:
         acc_dict = dict(acc)
-        # Map expense account names to a general inventory category.
-        # These strings must match the 'category' column in your 'inventory' table.
-        if 'Poultry Feed Expense' in acc_dict['name'] or 'General Feed Expense' in acc_dict['name']:
-            acc_dict['data_inventory_category'] = 'Feed'
-        elif 'Poultry Medication Expense' in acc_dict['name'] or 'General Medication Expense' in acc_dict['name'] or 'Veterinary Expense' in acc_dict['name']:
-            acc_dict['data_inventory_category'] = 'Medication'
-        elif 'Water Production Expenses' in acc_dict['name']:
-            acc_dict['data_inventory_category'] = 'Water Production'
-        elif 'General Goods Expense' in acc_dict['name']: # Add if you have such an account/inventory category
-            acc_dict['data_inventory_category'] = 'General Goods'
-        else:
-            acc_dict['data_inventory_category'] = '' # No inventory linkage for this expense
+        # Helper for frontend JS categories
+        if 'Feed' in acc_dict['name']: acc_dict['data_inventory_category'] = 'Feed'
+        elif 'Medication' in acc_dict['name']: acc_dict['data_inventory_category'] = 'Medication'
+        elif 'Water' in acc_dict['name']: acc_dict['data_inventory_category'] = 'Water Production'
+        else: acc_dict['data_inventory_category'] = ''
         expense_accounts_processed.append(acc_dict)
 
     asset_accounts = db.execute("SELECT * FROM accounts WHERE type = 'Asset' AND is_active = 1 ORDER BY name ASC").fetchall()
     
-    # Prepare inventory_items for JSON passing to the frontend JavaScript
+    # Inventory Items for JS
     inventory_items_raw = db.execute("SELECT id, name, category FROM inventory ORDER BY name ASC").fetchall()
     inventory_items_json_list = [dict(row) for row in inventory_items_raw]
     inventory_items_json = jsonify(inventory_items_json_list).get_data(as_text=True)
 
-    # Fetch active flocks for the new "Related Flock" dropdown
+    # --- NEW: Fetch Active Flocks AND Active Brooding Batches ---
     active_flocks = db.execute("SELECT id, flock_name FROM poultry_flocks WHERE status = 'Active' ORDER BY flock_name ASC").fetchall()
+    active_batches = db.execute("SELECT id, batch_name FROM brooding_batches WHERE status = 'Brooding' ORDER BY arrival_date DESC").fetchall()
 
     return render_template(
         'add_expense.html', 
         user=g.user, 
         suppliers=suppliers, 
-        expense_accounts=expense_accounts_processed, # Pass the processed list
+        expense_accounts=expense_accounts_processed, 
         asset_accounts=asset_accounts, 
-        inventory_items_json=inventory_items_json, # Pass JSON string
+        inventory_items_json=inventory_items_json, 
         active_flocks=active_flocks, 
-        today_date=date.today().strftime('%Y-%m-%d') # Ensure current date is passed
+        active_batches=active_batches, # <--- PASSING BATCHES TO HTML
+        today_date=date.today().strftime('%Y-%m-%d')
     )
-
 @app.route('/expenses/add', methods=['POST'])
 @login_required
 @check_day_closed('date')
@@ -1557,35 +1551,35 @@ def add_expense_post():
         credit_acc_id = int(request.form.get('credit_account_id'))
         amount = float(request.form.get('amount'))
         contact_id = request.form.get('contact_id') or None
-        inventory_item_id = request.form.get('inventory_item_id')
-        quantity_purchased_str = request.form.get('quantity_purchased')
         
-        # Get related flock ID
-        related_flock_id = request.form.get('related_flock_id')
-        if related_flock_id:
-            related_flock_id = int(related_flock_id)
-        else:
-            related_flock_id = None
+        # Check for Linked Projects (Flock OR Brooding Batch)
+        related_flock_id = request.form.get('related_flock_id') or None
+        brooding_batch_id = request.form.get('brooding_batch_id') or None # <--- NEW
 
         if not all([date, description, debit_acc_id, credit_acc_id, amount]) or amount <= 0:
             flash('Date, description, accounts, and a positive amount are required.', 'warning')
             return redirect(url_for('new_expense'))
         
-        # Insert into journal_entries, now with related_flock_id
-        db.execute("INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_contact_id, related_flock_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-                   (date, description, debit_acc_id, credit_acc_id, amount, g.user.id, contact_id, related_flock_id))
+        # Insert into journal_entries
+        db.execute("""
+            INSERT INTO journal_entries 
+            (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_contact_id, related_flock_id, brooding_batch_id) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (date, description, debit_acc_id, credit_acc_id, amount, g.user.id, contact_id, related_flock_id, brooding_batch_id))
         
-        if inventory_item_id and quantity_purchased_str and float(quantity_purchased_str) > 0:
-            db.execute("UPDATE inventory SET quantity = quantity + ? WHERE id = ?", (float(quantity_purchased_str), int(inventory_item_id)))
+        # Handle Inventory logic if applicable...
+        inventory_item_id = request.form.get('inventory_item_id')
+        quantity_purchased = request.form.get('quantity_purchased')
+        if inventory_item_id and quantity_purchased and float(quantity_purchased) > 0:
+            db.execute("UPDATE inventory SET quantity = quantity + ? WHERE id = ?", (float(quantity_purchased), int(inventory_item_id)))
         
         db.commit()
-        flash(f"Expense of ₦{amount:,.2f} for '{description}' recorded successfully!", 'success')
+        flash(f"Expense of ₦{amount:,.2f} recorded successfully!", 'success')
         return redirect(url_for('financial_center'))
     except Exception as e:
         db.rollback()
-        flash(f"An error occurred while recording the expense: {e}", "danger")
+        flash(f"An error occurred: {e}", "danger")
         return redirect(url_for('new_expense'))
-
 @app.route('/journal/add_manual', methods=['POST'])
 @login_required
 @check_day_closed('date')
@@ -2159,12 +2153,10 @@ def report_daily_sales():
         grand_total=grand_total,
         now=datetime.utcnow()
     )
-
 @app.route('/report/feed-movement')
 @login_required
 @permission_required('run_operational_reports')
 def report_feed_movement():
-    """Generates a report on feed usage across all farm sections."""
     db = get_db()
     start_date, end_date = _get_report_dates(request.args)
     
@@ -2189,7 +2181,9 @@ def report_feed_movement():
         ORDER BY il.log_date DESC
     """, (start_date, end_date)).fetchall()
 
+    # Calculate Totals
     total_cost = sum(log['cost_of_usage'] for log in feed_logs)
+    total_qty = sum(log['quantity_used'] for log in feed_logs) # <--- NEW
 
     return render_template(
         'report_feed_movement.html',
@@ -2198,32 +2192,55 @@ def report_feed_movement():
         end_date=end_date,
         feed_logs=feed_logs,
         total_cost=total_cost,
+        total_qty=total_qty, # <--- PASS TO TEMPLATE
         now=datetime.utcnow()
     )
-
 @app.route('/report/flock-movement')
 @login_required
 @permission_required('run_operational_reports')
 def report_flock_movement():
-    """Shows a historical view of all flocks, both active and completed."""
+    """Shows a historical view of flocks within a date range."""
     db = get_db()
     
+    # 1. Get Date Filters
+    start_date, end_date = _get_report_dates(request.args)
+
+    # 2. Query with Date Filter
     all_flocks = db.execute("""
         SELECT
             pf.*,
             (SELECT COALESCE(SUM(il.cost_of_usage), 0) FROM inventory_log il WHERE il.flock_id = pf.id) as calculated_feed_cost
         FROM poultry_flocks pf
+        WHERE pf.acquisition_date BETWEEN ? AND ?
         ORDER BY pf.acquisition_date DESC
-    """).fetchall()
+    """, (start_date, end_date)).fetchall()
+
+    # 3. Calculate Totals for the Filtered Result
+    total_birds = 0
+    total_sales = 0
+    total_costs = 0
+    total_profit = 0
+
+    for flock in all_flocks:
+        total_birds += (flock['bird_count'] or 0)
+        total_sales += (flock['final_sale_price'] or 0)
+        # Use total_cost if set (inactive), else use calculated running cost
+        cost = flock['total_cost'] if flock['total_cost'] else flock['calculated_feed_cost']
+        total_costs += (cost or 0)
+        total_profit += (flock['net_profit'] or 0)
 
     return render_template(
         'report_flock_movement.html',
         user=g.user,
         all_flocks=all_flocks,
+        total_birds=total_birds,
+        total_sales=total_sales,
+        total_costs=total_costs,
+        total_profit=total_profit,
+        start_date=start_date, # Pass dates back to template
+        end_date=end_date,
         now=datetime.utcnow()
     )
-
-# NEW REPORT: Laying Flock Costing Report
 @app.route('/report/flock-costing')
 @login_required
 @permission_required('run_operational_reports')
@@ -2431,21 +2448,17 @@ def new_purchase(): # Renamed from add_purchase
         active_flocks=active_flocks,
         today_date=date.today().strftime('%Y-%m-%d')
     )
-
-# You will then point this form's POST request to your add_expense_post function:
-# @app.route('/purchases/add', methods=['POST']) # This route would be used if you have a separate backend for purchases
-# ...
-# def add_purchase_post():
-#    # ... this would call add_expense_post's logic or duplicate it if truly separate
 @app.route('/inventory/item/add', methods=['POST'])
 @login_required
-@check_day_closed('date') # Assuming 'date' is the name for purchase_date in the form
+@check_day_closed('purchase_date')
 @permission_required('add_inventory_item')
 def add_inventory_item():
-    db = get_db() # Ensure db connection
+    db = get_db()
     try:
+        # 1. Get Form Data
         name = request.form.get('name')
         category = request.form.get('category')
+        barcode = request.form.get('barcode') # <--- NEW BARCODE FIELD
         quantity = float(request.form.get('quantity', 0))
         unit = request.form.get('unit')
         low_stock_threshold = float(request.form.get('low_stock_threshold', 0))
@@ -2453,60 +2466,49 @@ def add_inventory_item():
         sale_price = float(request.form.get('sale_price', 0))
         expiry_date = request.form.get('expiry_date') or None
         
-        # NEW: Financial details for the initial purchase
+        # Financials
         purchase_date = request.form.get('purchase_date') or date.today().strftime('%Y-%m-%d')
-        payment_account_id = request.form.get('payment_account_id') # This comes from the new form field
-        supplier_id = request.form.get('supplier_id') or None # Optional supplier link
+        payment_account_id = request.form.get('payment_account_id')
+        supplier_id = request.form.get('supplier_id') or None
 
-        if not all([name, category, unit, payment_account_id]): # payment_account_id is now required for initial stock
+        if not all([name, category, unit, payment_account_id]):
             flash('Item Name, Category, Unit, and Payment Source are required.', 'warning')
             return redirect(url_for('inventory_dashboard'))
 
-        # Check if an item with this name already exists before inserting
+        # 2. Check Duplicates
         existing_item = db.execute("SELECT id FROM inventory WHERE name = ?", (name,)).fetchone()
         if existing_item:
-            flash(f"An inventory item with the name '{name}' already exists. Please update its stock instead of adding a new item.", 'danger')
+            flash(f"An item named '{name}' already exists.", 'danger')
             return redirect(url_for('inventory_dashboard'))
 
+        # 3. Insert into Inventory
         cursor = db.cursor()
         cursor.execute("""
-            INSERT INTO inventory (name, category, quantity, unit, low_stock_threshold, unit_cost, sale_price, expiry_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (name, category, quantity, unit, low_stock_threshold, unit_cost, sale_price, expiry_date))
-        new_item_id = cursor.lastrowid # Get the ID of the newly created item
+            INSERT INTO inventory (name, category, barcode, quantity, unit, low_stock_threshold, unit_cost, sale_price, expiry_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (name, category, barcode, quantity, unit, low_stock_threshold, unit_cost, sale_price, expiry_date))
+        new_item_id = cursor.lastrowid
 
-        # NEW: Create a journal entry for the initial purchase of this item
+        # 4. Financial Journal Entry (if cost > 0)
         if quantity > 0 and unit_cost > 0:
             total_purchase_value = quantity * unit_cost
-            
-            # Debit the specific Inventory Asset account based on category
-            debit_inventory_asset_id = get_account_id(
-                f"Inventory - {category}", 
-                acc_type='Asset', 
-                create_if_not_found=True # Allow creation if a category-specific inventory asset isn't pre-defined
-            )
-            credit_payment_account_id = int(payment_account_id)
+            debit_acc_id = get_account_id(f"Inventory - {category}", acc_type='Asset', create_if_not_found=True)
+            credit_acc_id = int(payment_account_id)
 
-            description = f"Initial stock purchase of {name} ({quantity} {unit} @ ₦{unit_cost:,.2f}/{unit})"
-            
             db.execute("""
                 INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_contact_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (purchase_date, description, debit_inventory_asset_id, credit_payment_account_id, total_purchase_value, g.user.id, supplier_id))
+            """, (purchase_date, f"Initial stock: {name}", debit_acc_id, credit_acc_id, total_purchase_value, g.user.id, supplier_id))
 
         db.commit()
-
-        flash(f"New inventory item '{name}' added successfully and purchase recorded!", 'success')
+        flash(f"New item '{name}' added successfully!", 'success')
 
     except (ValueError, TypeError) as e:
-        flash(f"Invalid data provided. Please check your numbers (e.g., quantity, cost, payment source). Error: {e}", 'danger')
         db.rollback()
-    except sqlite3.IntegrityError:
-        flash(f"A database integrity error occurred, possibly a duplicate entry. Ensure item name is unique.", 'danger')
-        db.rollback()
+        flash(f"Invalid number provided: {e}", 'danger')
     except Exception as e:
-        flash(f"An unexpected error occurred: {e}", 'danger')
         db.rollback()
+        flash(f"An error occurred: {e}", 'danger')
 
     return redirect(url_for('inventory_dashboard'))
 @app.route('/inventory/stock/add', methods=['POST'])
@@ -2703,65 +2705,183 @@ def log_inventory_usage():
         flash(f"An unexpected error occurred: {e}", 'danger')
 
     return redirect(request.referrer or url_for('dashboard'))
-
 @app.route('/brooding/batch/report/<int:batch_id>')
 @login_required
 @permission_required('run_brooding_report')
 def brooding_batch_report(batch_id):
     db = get_db()
     
+    # 1. Get Batch
     batch = db.execute("SELECT * FROM brooding_batches WHERE id = ?", (batch_id,)).fetchone()
-    if not batch:
-        flash("Brooding batch not found.", "danger")
-        return redirect(url_for('brooding_dashboard'))
+    if not batch: return redirect(url_for('brooding_dashboard'))
 
-    mortality_logs = db.execute(
-        "SELECT log_date, mortality_count FROM brooding_log WHERE batch_id = ? ORDER BY log_date",
-        (batch_id,)
-    ).fetchall()
+    # 2. Get Filters
+    raw_filter = request.args.get('filter', 'All')
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
 
-    usage_logs = db.execute("""
-        SELECT il.log_date, i.name, il.quantity_used, il.cost_of_usage
-        FROM inventory_log il
-        JOIN inventory i ON il.inventory_item_id = i.id
-        WHERE il.brooding_batch_id = ? ORDER BY il.log_date
+    # 3. Fetch Data Sources
+    # A. Mortality
+    mortality_logs = db.execute("SELECT log_date, 'Mortality' as type, 'Mortality Recorded' as item_name, mortality_count as quantity, 0 as cost FROM brooding_log WHERE batch_id = ?", (batch_id,)).fetchall()
+    
+    # B. Inventory (Feed/Meds)
+    inventory_logs = db.execute("SELECT il.log_date, i.category as type, i.name as item_name, il.quantity_used as quantity, il.cost_of_usage as cost FROM inventory_log il JOIN inventory i ON il.inventory_item_id = i.id WHERE il.brooding_batch_id = ?", (batch_id,)).fetchall()
+
+    # C. Direct Expenses (NEW!)
+    # Fetch journal entries linked to this batch (e.g. Labor, Heating)
+    expense_logs = db.execute("""
+        SELECT je.transaction_date as log_date, 'Expense' as type, je.description as item_name, 
+               0 as quantity, je.amount as cost 
+        FROM journal_entries je 
+        WHERE je.brooding_batch_id = ?
     """, (batch_id,)).fetchall()
 
-    daily_events = {}
+    # 4. Combine
+    timeline = []
+    for log in mortality_logs: timeline.append(dict(log))
+    for log in inventory_logs: timeline.append(dict(log))
+    for log in expense_logs: timeline.append(dict(log)) # Add expenses to timeline
+
+    # Add Purchase
+    timeline.append({
+        'log_date': batch['arrival_date'],
+        'type': 'Purchase',
+        'item_name': f"Initial Purchase",
+        'quantity': batch['initial_chick_count'],
+        'cost': batch['initial_cost'] or 0
+    })
+
+    timeline.sort(key=lambda x: x['log_date'])
+
+    # 5. Process
+    running_bird_balance = 0
+    running_cost_balance = 0
     
-    for log in mortality_logs:
-        date_str = log['log_date']
-        if date_str not in daily_events:
-            daily_events[date_str] = {'mortality': 0, 'usage': []}
-        daily_events[date_str]['mortality'] += log['mortality_count']
-
-    for log in usage_logs:
-        date_str = log['log_date']
-        if date_str not in daily_events:
-            daily_events[date_str] = {'mortality': 0, 'usage': []}
-        daily_events[date_str]['usage'].append(dict(log))
-
-    sorted_daily_events = sorted(daily_events.items())
-
-    total_feed_cost = sum(log['cost_of_usage'] for log in usage_logs)
-    total_mortality = sum(log['mortality_count'] for log in mortality_logs)
-    total_cost = (batch['initial_cost'] or 0) + total_feed_cost
+    # Totals
+    life_mortality = 0
+    life_feed_cost = 0
+    life_med_cost = 0
+    life_other_cost = 0 # NEW
     
+    period_total_qty = 0
+    period_total_cost = 0
+    final_display_list = []
+
+    for event in timeline:
+        evt_type = str(event['type']) if event['type'] else "Other"
+        
+        # Update Running Balances
+        if evt_type == 'Purchase':
+            running_bird_balance += event['quantity']
+        elif evt_type == 'Mortality':
+            running_bird_balance -= event['quantity']
+            life_mortality += event['quantity']
+        elif 'Feed' in evt_type:
+            life_feed_cost += event['cost']
+        elif 'Medication' in evt_type or 'Vaccine' in evt_type:
+            life_med_cost += event['cost']
+        elif evt_type == 'Expense': # NEW
+            life_other_cost += event['cost']
+        
+        running_cost_balance += event['cost']
+
+        event['bird_balance'] = running_bird_balance
+        event['cost_balance'] = running_cost_balance
+
+        # Filtering
+        include_row = True
+        filter_lower = raw_filter.strip().lower()
+        evt_type_lower = evt_type.lower()
+
+        if filter_lower != 'all':
+            if filter_lower == 'feed' and 'feed' not in evt_type_lower: include_row = False
+            elif filter_lower == 'medication' and ('medication' not in evt_type_lower and 'vaccine' not in evt_type_lower): include_row = False
+            elif filter_lower == 'mortality' and 'mortality' not in evt_type_lower: include_row = False
+            # Allow "Other" expenses to show when All is selected, or if we had a specific filter for it
+        
+        # Date Filter
+        if start_date_str and event['log_date'] < start_date_str: include_row = False
+        if end_date_str and event['log_date'] > end_date_str: include_row = False
+
+        if include_row:
+            final_display_list.append(event)
+            period_total_cost += event['cost']
+            period_total_qty += event['quantity']
+
     summary = {
-        'total_feed_cost': total_feed_cost,
-        'total_mortality': total_mortality,
-        'total_cost': total_cost
+        'initial_count': batch['initial_chick_count'],
+        'current_balance': running_bird_balance,
+        'total_mortality': life_mortality,
+        'mortality_rate': (life_mortality / batch['initial_chick_count'] * 100) if batch['initial_chick_count'] > 0 else 0,
+        'total_feed_cost': life_feed_cost,
+        'total_med_cost': life_med_cost,
+        'total_cost': running_cost_balance
     }
 
     return render_template(
         'brooding_batch_report.html',
         user=g.user,
         batch=batch,
-        daily_events=sorted_daily_events,
+        timeline=final_display_list,
         summary=summary,
+        current_filter=raw_filter,
+        start_date=start_date_str,
+        end_date=end_date_str,
+        period_total_qty=period_total_qty,
+        period_total_cost=period_total_cost,
         now=datetime.utcnow()
     )
+@app.route('/report/brooding-mortality')
+@login_required
+@permission_required('run_mortality_report')
+def report_brooding_mortality():
+    db = get_db()
+    
+    # 1. Get Date Filters
+    start_date, end_date = _get_report_dates(request.args)
+    
+    # 2. Get Batch Filter
+    selected_batch_id = request.args.get('batch_id')
+    
+    # 3. Build the SQL Query
+    sql = """
+        SELECT
+            bl.log_date,
+            bb.batch_name,
+            bb.initial_chick_count,
+            bl.mortality_count
+        FROM brooding_log bl
+        JOIN brooding_batches bb ON bl.batch_id = bb.id
+        WHERE bl.log_date BETWEEN ? AND ?
+    """
+    params = [start_date, end_date]
 
+    # Apply Batch Filter if selected
+    if selected_batch_id and selected_batch_id != 'All':
+        sql += " AND bl.batch_id = ?"
+        params.append(selected_batch_id)
+
+    sql += " ORDER BY bl.log_date DESC, bb.batch_name"
+
+    # 4. Execute Query
+    mortality_logs = db.execute(sql, params).fetchall()
+    total_mortality = sum(log['mortality_count'] for log in mortality_logs)
+    
+    # 5. Get list of batches for the Dropdown Filter
+    all_batches = db.execute("SELECT id, batch_name FROM brooding_batches ORDER BY arrival_date DESC").fetchall()
+
+    return render_template(
+        'report_brooding_mortality.html',
+        user=g.user,
+        start_date=start_date,
+        end_date=end_date,
+        mortality_logs=mortality_logs,
+        total_mortality=total_mortality,
+        all_batches=all_batches,             
+        selected_batch_id=selected_batch_id,
+        now=datetime.utcnow(),
+        report_title="Brooding Mortality Report"
+    )    
 # ==============================================================================
 # 13. DATA MODIFICATION & ACTION ROUTES
 # ==============================================================================
@@ -2945,18 +3065,15 @@ def deactivate_flock():
         flash(f"An error occurred: {e}", "danger")
         
     return redirect(url_for('poultry_dashboard'))
-
 @app.route('/inventory/item/update/<int:item_id>', methods=['POST'])
 @login_required
 @permission_required('edit_inventory_item')
 def update_inventory_item(item_id):
-    """
-    Handles updating an existing inventory item's details.
-    """
     db = get_db()
     try:
         name = request.form.get('name')
         category = request.form.get('category')
+        barcode = request.form.get('barcode') # <--- NEW BARCODE FIELD
         unit = request.form.get('unit')
         low_stock_threshold = float(request.form.get('low_stock_threshold', 0))
         unit_cost = float(request.form.get('unit_cost', 0))
@@ -2969,25 +3086,21 @@ def update_inventory_item(item_id):
 
         db.execute("""
             UPDATE inventory SET
-                name = ?, category = ?, unit = ?, low_stock_threshold = ?,
+                name = ?, category = ?, barcode = ?, unit = ?, low_stock_threshold = ?,
                 unit_cost = ?, sale_price = ?, expiry_date = ?
             WHERE id = ?
-        """, (name, category, unit, low_stock_threshold, unit_cost, sale_price, expiry_date, item_id))
+        """, (name, category, barcode, unit, low_stock_threshold, unit_cost, sale_price, expiry_date, item_id))
+        
         db.commit()
-
         flash(f"Item '{name}' updated successfully!", 'success')
 
     except (ValueError, TypeError):
-        flash("Invalid data provided. Please check your numbers.", 'danger')
-    except sqlite3.IntegrityError:
-        flash("An inventory item with that name might already exist.", 'danger')
-        db.rollback()
+        flash("Invalid numbers provided.", 'danger')
     except Exception as e:
-        flash(f"An unexpected error occurred: {e}", 'danger')
         db.rollback()
+        flash(f"An error occurred: {e}", 'danger')
 
     return redirect(url_for('inventory_dashboard'))
-
 @app.route('/inventory/item/delete/<int:item_id>', methods=['POST'])
 @login_required
 @permission_required('delete_inventory_item')
@@ -3335,39 +3448,6 @@ def report_brooding():
         report_title="Brooding Performance Report"
     )
 
-@app.route('/report/brooding-mortality')
-@login_required
-@permission_required('run_mortality_report')
-def report_brooding_mortality():
-    db = get_db()
-    start_date, end_date = _get_report_dates(request.args)
-    
-    mortality_logs = db.execute("""
-        SELECT
-            bl.log_date,
-            bb.batch_name,
-            bb.initial_chick_count,
-            bl.mortality_count
-        FROM brooding_log bl
-        JOIN brooding_batches bb ON bl.batch_id = bb.id
-        WHERE
-            bl.log_date BETWEEN ? AND ?
-        ORDER BY bl.log_date DESC, bb.batch_name
-    """, (start_date, end_date)).fetchall()
-
-    total_mortality = sum(log['mortality_count'] for log in mortality_logs)
-
-    return render_template(
-        'report_brooding_mortality.html',
-        user=g.user,
-        start_date=start_date,
-        end_date=end_date,
-        mortality_logs=mortality_logs,
-        total_mortality=total_mortality,
-        now=datetime.utcnow(),
-        report_title="Brooding Section Mortality Log"
-    )
-
 @app.route('/report/mortality')
 @login_required
 @permission_required('run_mortality_report')
@@ -3400,7 +3480,40 @@ def report_mortality():
         now=datetime.utcnow(),
         report_title="Brooding Mortality Report"
     )
+@app.route('/report/laying-mortality')
+@login_required
+@permission_required('run_mortality_report')
+def report_laying_mortality():
+    db = get_db()
+    start_date, end_date = _get_report_dates(request.args)
+    
+    # We find Laying Mortality by looking at Journal Entries 
+    # where the description starts with "Mortality loss" and is linked to a flock.
+    logs = db.execute("""
+        SELECT 
+            je.transaction_date,
+            pf.flock_name,
+            je.description,
+            je.amount as financial_loss
+        FROM journal_entries je
+        JOIN poultry_flocks pf ON je.related_flock_id = pf.id
+        WHERE je.transaction_date BETWEEN ? AND ?
+          AND je.description LIKE 'Mortality loss%'
+        ORDER BY je.transaction_date DESC
+    """, (start_date, end_date)).fetchall()
+    
+    total_loss_value = sum(log['financial_loss'] for log in logs)
 
+    return render_template(
+        'report_laying_mortality.html',
+        user=g.user,
+        start_date=start_date,
+        end_date=end_date,
+        logs=logs,
+        total_loss_value=total_loss_value,
+        now=datetime.utcnow(),
+        report_title="Laying Flock Mortality Report"
+    )
 # ==============================================================================
 # 14. Table Water  route
 # ==============================================================================
@@ -3681,21 +3794,18 @@ def log_other_water_costs():
 @login_required
 @permission_required('view_bookkeeping')
 def contact_ledger(contact_id):
-    """
-    Displays a detailed, printable Statement of Account for a specific contact,
-    including a date range filter, opening balance, and running balance.
-    """
     db = get_db()
     
+    # 1. Get Contact Info
     contact = db.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,)).fetchone()
     if not contact or not contact['account_id']:
         flash("Contact not found or does not have a linked ledger account.", "danger")
         return redirect(url_for('contacts_dashboard'))
     
     contact_account_id = contact['account_id']
-
     start_date, end_date = _get_report_dates(request.args)
     
+    # 2. Calculate Opening Balance (Before Start Date)
     opening_balance_row = db.execute("""
         SELECT (
             (SELECT COALESCE(SUM(amount), 0) FROM journal_entries WHERE debit_account_id = ? AND transaction_date < ?) -
@@ -3704,6 +3814,7 @@ def contact_ledger(contact_id):
     """, (contact_account_id, start_date, contact_account_id, start_date)).fetchone()
     opening_balance = opening_balance_row['opening_balance'] if opening_balance_row else 0
 
+    # 3. Fetch Transactions (Within Date Range)
     transactions = db.execute("""
         SELECT 
             je.transaction_date, 
@@ -3720,11 +3831,24 @@ def contact_ledger(contact_id):
         ORDER BY je.transaction_date ASC, je.id ASC
     """, (contact_account_id, contact_account_id, contact_account_id, contact_account_id, start_date, end_date)).fetchall()
 
+    # 4. Process Loop: Calculate Running Balance AND Period Totals
     ledger_entries = []
     running_balance = opening_balance
+    
+    # New variables for the totals
+    period_total_debit = 0
+    period_total_credit = 0
+
     for tx_row in transactions:
         tx = dict(tx_row)
+        
+        # Add to period totals
+        period_total_debit += tx['debit']
+        period_total_credit += tx['credit']
+        
+        # Update running balance
         running_balance += tx['debit'] - tx['credit']
+        
         tx['running_balance'] = running_balance
         ledger_entries.append(tx)
 
@@ -3739,9 +3863,11 @@ def contact_ledger(contact_id):
         opening_balance=opening_balance,
         closing_balance=closing_balance,
         ledger_entries=ledger_entries,
+        # Pass the new totals to the template
+        period_total_debit=period_total_debit,
+        period_total_credit=period_total_credit,
         now=datetime.utcnow()
     )
-
 @app.route('/contacts/edit/<int:contact_id>', methods=['GET'])
 @login_required
 @permission_required('edit_contact')

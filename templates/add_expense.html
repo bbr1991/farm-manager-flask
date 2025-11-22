@@ -53,7 +53,16 @@
                     </select>
                     <div class="invalid-feedback">Please select a payment source.</div>
                 </div>
-                
+               <div class="mb-3">
+    <label for="brooding_batch_id" class="form-label">Related Brooding Batch (Optional)</label>
+    <select class="form-select" name="brooding_batch_id" id="brooding_batch_id">
+        <option value="" selected>-- Not linked to a brooding batch --</option>
+        {% for batch in active_batches %}
+        <option value="{{ batch.id }}">{{ batch.batch_name }}</option>
+        {% endfor %}
+    </select>
+    <div class="form-text">Select this if the expense (e.g., Heating, Labor) is for a specific brooding batch.</div>
+</div> 
                 {# NEW: Related Flock Dropdown #}
                 <div class="col-md-6">
                     <label for="related_flock_id" class="form-label">Related Flock (Optional)</label>

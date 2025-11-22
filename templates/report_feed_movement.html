@@ -31,7 +31,7 @@
                 <input type="date" class="form-control" name="end_date" id="end_date" value="{{ end_date }}">
             </div>
             <div class="col-md-4">
-                <button type="submit" class="btn btn-primary">Generate Report</button>
+                <button type="submit" class="btn btn-primary w-100">Generate Report</button>
             </div>
         </div>
     </form>
@@ -77,12 +77,16 @@
                         <tr><td colspan="6" class="text-center p-4 text-muted">No feed usage was recorded for this period.</td></tr>
                         {% endfor %}
                     </tbody>
-                    <tfoot>
-                        <tr class="table-group-divider">
-                            <th colspan="5" class="text-end fs-5">Total Feed Cost for Period:</th>
-                            <th class="text-end fs-5 text-danger">₦{{ '{:,.2f}'.format(total_cost) }}</th>
+                    
+                    <!-- FOOTER (TOTALS) -->
+                    <tfoot class="table-dark border-top border-3">
+                        <tr>
+                            <th colspan="4" class="text-end text-uppercase py-2">Period Totals:</th>
+                            <th class="text-end fw-bold py-2">{{ total_qty }}</th>
+                            <th class="text-end fw-bold text-warning py-2">₦{{ '{:,.2f}'.format(total_cost) }}</th>
                         </tr>
                     </tfoot>
+                    
                 </table>
             </div>
         </div>
@@ -100,6 +104,7 @@
             box-shadow: none !important;
         }
         a { text-decoration: none; color: #000; }
+        .table-dark { background-color: #ccc !important; color: #000 !important; border-top: 2px solid #000 !important; }
     }
     </style>
 {% endblock %}

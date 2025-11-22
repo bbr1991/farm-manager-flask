@@ -1,88 +1,198 @@
 {% extends "base.html" %}
-{% block title %}Brooding Report for {{ batch.batch_name }}{% endblock %}
+{% block title %}Brooding Ledger: {{ batch.batch_name }}{% endblock %}
 
 {% block content %}
+<div class="container-fluid">
     <!-- Page Header -->
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom no-print">
-        <h1 class="h2">Brooding Batch Report</h1>
+        <h1 class="h2">Batch Ledger: {{ batch.batch_name }}</h1>
         <div>
             <a href="{{ url_for('brooding_dashboard') }}" class="btn btn-sm btn-outline-secondary me-2">
-                <i class="bi bi-arrow-left"></i> Back to Brooding Dashboard
+                <i class="bi bi-arrow-left"></i> Back
             </a>
-            <button onclick="window.print();" class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-printer-fill"></i> Print Report
+            <button onclick="window.print();" class="btn btn-sm btn-primary">
+                <i class="bi bi-printer-fill"></i> Print
             </button>
         </div>
     </div>
 
-    <!-- Main Report Card -->
-    <div class="card shadow-sm">
-        <!-- Report Header -->
-        <div class="card-header text-center">
-            <h2>Brooding Batch Activity Log</h2>
-            <p class="h4 mb-0"><strong>Batch: {{ batch.batch_name }}</strong> ({{ batch.breed }})</p>
-            <p class="text-muted">Arrival Date: {{ batch.arrival_date }}</p>
+    <!-- SUMMARY CARDS (Life of Batch) -->
+    <div class="row mb-4 g-3">
+        <div class="col-md-3">
+            <div class="card h-100 border-primary">
+                <div class="card-header bg-primary text-white text-center fw-bold">Current Birds</div>
+                <div class="card-body text-center">
+                    <h2 class="fw-bold text-primary">{{ summary.current_balance }}</h2>
+                    <small class="text-muted">Started: {{ summary.initial_count }}</small>
+                </div>
+            </div>
         </div>
-
-        <div class="card-body">
-            <!-- Summary Section -->
-            <div class="row mb-4">
-                <div class="col-md-3"><strong>Initial Count:</strong> {{ batch.initial_chick_count }}</div>
-                <div class="col-md-3"><strong>Current Count:</strong> {{ batch.current_chick_count }}</div>
-                <div class="col-md-3"><strong>Total Mortality:</strong> <span class="text-danger">{{ summary.total_mortality }}</span></div>
-                <div class="col-md-3"><strong>Mortality Rate:</strong> <span class="text-danger">{{ '{:,.2%}'.format(summary.total_mortality / batch.initial_chick_count if batch.initial_chick_count else 0) }}</span></div>
+        <div class="col-md-3">
+            <div class="card h-100 border-danger">
+                <div class="card-header bg-danger text-white text-center fw-bold">Mortality</div>
+                <div class="card-body text-center">
+                    <h2 class="fw-bold text-danger">{{ summary.total_mortality }}</h2>
+                    <small class="text-muted">Rate: {{ '{:,.1f}%'.format(summary.mortality_rate) }}</small>
+                </div>
             </div>
-            <div class="row mb-4">
-                <div class="col-md-4"><strong>Initial Purchase Cost:</strong> ₦{{ '{:,.2f}'.format(batch.initial_cost) }}</div>
-                <div class="col-md-4"><strong>Total Feed/Meds Cost:</strong> ₦{{ '{:,.2f}'.format(summary.total_feed_cost) }}</div>
-                <div class="col-md-4"><strong>Total Cost to Date:</strong> <strong>₦{{ '{:,.2f}'.format(summary.total_cost) }}</strong></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 border-warning">
+                <div class="card-header bg-warning text-dark text-center fw-bold">Feed & Meds</div>
+                <div class="card-body text-center">
+                    <h3 class="text-dark">₦{{ '{:,.0f}'.format(summary.total_feed_cost + summary.total_med_cost) }}</h3>
+                </div>
             </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 border-success">
+                <div class="card-header bg-success text-white text-center fw-bold">Total Investment</div>
+                <div class="card-body text-center">
+                    <h3 class="fw-bold text-success">₦{{ '{:,.0f}'.format(summary.total_cost) }}</h3>
+                    <small class="text-muted">Cumulative Cost</small>
+                </div>
+            </div>
+        </div>
+    </div>
 
-            <hr>
-            <h4 class="mb-3">Daily Activity Log</h4>
+    <!-- ADVANCED FILTER FORM -->
+    <div class="card mb-4 no-print shadow-sm bg-light">
+        <div class="card-body py-3">
+            <form method="GET" action="{{ url_for('brooding_batch_report', batch_id=batch.id) }}" class="row g-3 align-items-end">
+                
+                <!-- Activity Filter -->
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">Activity Type</label>
+                    <select name="filter" class="form-select form-select-sm">
+                        <option value="All" {% if current_filter == 'All' %}selected{% endif %}>Show All Activity</option>
+                        <option value="Feed" {% if current_filter == 'Feed' %}selected{% endif %}>Feed Only</option>
+                        <option value="Medication" {% if current_filter == 'Medication' %}selected{% endif %}>Medication Only</option>
+                        <option value="Mortality" {% if current_filter == 'Mortality' %}selected{% endif %}>Mortality Only</option>
+                    </select>
+                </div>
 
-            <!-- Daily Log Table -->
-            <table class="table table-sm table-bordered">
-                <thead class="table-light">
+                <!-- Date Range -->
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">Start Date</label>
+                    <input type="date" name="start_date" class="form-control form-control-sm" value="{{ start_date if start_date else '' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">End Date</label>
+                    <input type="date" name="end_date" class="form-control form-control-sm" value="{{ end_date if end_date else '' }}">
+                </div>
+
+                <!-- Submit -->
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary btn-sm w-100">
+                        <i class="bi bi-search"></i> Apply Filter
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- LEDGER TABLE -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white border-bottom">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><strong>{{ batch.batch_name }}</strong> Report</h5>
+                <small class="text-muted">
+                    {% if start_date and end_date %}
+                        Period: {{ start_date }} to {{ end_date }}
+                    {% else %}
+                        Full History
+                    {% endif %}
+                </small>
+            </div>
+        </div>
+        
+        <div class="table-responsive">
+            <table class="table table-hover table-bordered align-middle mb-0">
+                <thead class="table-secondary">
                     <tr>
-                        <th>Date</th>
-                        <th>Activity / Item Used</th>
-                        <th class="text-end">Quantity</th>
-                        <th class="text-end">Cost Impact</th>
+                        <th style="width: 12%">Date</th>
+                        <th style="width: 10%" class="text-center">Type</th>
+                        <th style="width: 28%">Description</th>
+                        <th style="width: 10%" class="text-center">Qty</th>
+                        <th style="width: 13%" class="text-end">Cost (₦)</th>
+                        <th style="width: 13%" class="text-end table-warning small">Run. Cost</th>
+                        <th style="width: 14%" class="text-center table-active small">Bird Bal.</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for date, events in daily_events %}
-                        <tr class="table-secondary">
-                            <td colspan="4"><strong>{{ date }}</strong></td>
-                        </tr>
-                        {% if events.mortality > 0 %}
-                        <tr>
-                            <td></td>
-                            <td><span class="text-danger">Mortality Recorded</span></td>
-                            <td class="text-end text-danger">{{ events.mortality }} bird(s)</td>
-                            <td class="text-end text-danger">N/A</td>
-                        </tr>
-                        {% endif %}
-                        {% for usage in events.usage %}
-                        <tr>
-                            <td></td>
-                            <td>{{ usage.name }}</td>
-                            <td class="text-end">{{ usage.quantity_used }}</td>
-                            <td class="text-end">₦{{ '{:,.2f}'.format(usage.cost_of_usage) }}</td>
-                        </tr>
-                        {% endfor %}
+                    {% for event in timeline %}
+                    <tr>
+                        <td>{{ event.log_date }}</td>
+                        <td class="text-center">
+                            {% if event.type == 'Purchase' %}
+                                <span class="badge bg-primary">Startup</span>
+                            {% elif event.type == 'Mortality' %}
+                                <span class="badge bg-danger">Mortality</span>
+                            {% elif 'Feed' in event.type %}
+                                <span class="badge bg-success">Feed</span>
+                            {% elif 'Medication' in event.type or 'Vaccine' in event.type %}
+                                <span class="badge bg-info text-dark">Meds</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ event.type }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ event.item_name }}</td>
+                        <td class="text-center">
+                            {% if event.type == 'Mortality' %}
+                                <span class="text-danger fw-bold">-{{ event.quantity }}</span>
+                            {% else %}
+                                {{ event.quantity }}
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if event.cost > 0 %}
+                                {{ '{:,.2f}'.format(event.cost) }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="text-end table-warning small">
+                            ₦{{ '{:,.2f}'.format(event.cost_balance) }}
+                        </td>
+                        <td class="text-center table-active small">
+                            {{ event.bird_balance }}
+                        </td>
+                    </tr>
                     {% else %}
-                        <tr>
-                            <td colspan="4" class="text-center p-3 text-muted">No activities have been logged for this batch yet.</td>
-                        </tr>
+                    <tr>
+                        <td colspan="7" class="text-center p-5 text-muted">
+                            No records found for this period/filter.
+                        </td>
+                    </tr>
                     {% endfor %}
                 </tbody>
+
+                <!-- TOTALS FOOTER -->
+                <tfoot class="table-dark">
+                    <tr>
+                        <td colspan="3" class="text-end fw-bold">Period Totals:</td>
+                        <td class="text-center fw-bold">
+                            {{ period_total_qty }} 
+                            {% if current_filter == 'Mortality' %} Birds {% endif %}
+                        </td>
+                        <td class="text-end fw-bold">₦{{ '{:,.2f}'.format(period_total_cost) }}</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+
             </table>
         </div>
-        <div class="card-footer text-center text-muted small no-print">
-            Report generated on {{ now.strftime('%Y-%m-%d %H:%M:%S') }}
-        </div>
     </div>
-    <style> @media print { .no-print { display: none !important; } .card { border: none; box-shadow: none; } } </style>
+</div>
+
+<style>
+    @media print {
+        .no-print { display: none !important; }
+        .card { border: none !important; box-shadow: none !important; }
+        .badge { border: 1px solid #000; color: #000 !important; background: none !important; }
+        .table-active { background-color: #eee !important; }
+        .table-warning { background-color: #fff3cd !important; }
+        .table-dark { color: #000 !important; background-color: #ccc !important; border-top: 2px solid #000; }
+    }
+</style>
 {% endblock %}

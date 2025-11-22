@@ -1,84 +1,159 @@
 {% extends "base.html" %}
-{% block title %}Flock Movement & History{% endblock %}
+{% block title %}Flock Master Report{% endblock %}
 
 {% block content %}
     <!-- ====================================================== -->
-    <!-- ON-SCREEN HEADER (Hidden when printing) -->
+    <!-- HEADER -->
     <!-- ====================================================== -->
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom no-print">
-        <h1 class="h2"><i class="bi bi-people-fill me-2"></i>Flock Movement & History</h1>
-        <div class="btn-toolbar mb-2 mb-md-0">
+        <h1 class="h2"><i class="bi bi-people-fill me-2"></i>Flock Master Report</h1>
+        <div>
             <a href="{{ url_for('reports_dashboard') }}" class="btn btn-sm btn-outline-secondary me-2">
-                <i class="bi bi-arrow-left"></i> Back to Reports
+                <i class="bi bi-arrow-left"></i> Back
             </a>
-            <button onclick="window.print();" class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-printer-fill"></i> Print Report
+            <button onclick="window.print();" class="btn btn-sm btn-primary">
+                <i class="bi bi-printer-fill"></i> Print
             </button>
         </div>
     </div>
 
     <!-- ====================================================== -->
-    <!-- PRINT-ONLY HEADER (Hidden on screen) -->
+    <!-- DATE FILTER FORM (NEW) -->
     <!-- ====================================================== -->
-    <div class="text-center d-none print-show mb-4">
-        <h3>Flock Movement & History Report</h3>
-        <p><strong>Farm:</strong> {{ g.user.farm_name }}</p>
-        <p><strong>Printed On:</strong> {{ now.strftime('%Y-%m-%d %H:%M:%S') }} UTC</p>
+    <div class="card mb-4 no-print bg-light shadow-sm">
+        <div class="card-body py-3">
+            <form method="GET" action="{{ url_for('report_flock_movement') }}" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small">Acquisition Start Date</label>
+                    <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small">Acquisition End Date</label>
+                    <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> Filter Flocks
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 
-    <!-- Report Table -->
-    <div class="card shadow-sm">
-        <div class="card-header bg-light">
-            <h5 class="mb-0">Complete Flock History</h5>
+    <!-- ====================================================== -->
+    <!-- SUMMARY CARDS -->
+    <!-- ====================================================== -->
+    <div class="row mb-4 g-3">
+        <!-- Net Profit (Hero Card) -->
+        <div class="col-md-4">
+            <div class="card h-100 border-success shadow-sm">
+                <div class="card-header bg-success text-white text-center fw-bold">Total Net Profit</div>
+                <div class="card-body text-center">
+                    <h2 class="display-6 fw-bold text-success">₦{{ '{:,.2f}'.format(total_profit) }}</h2>
+                    <small class="text-muted">For Selected Period</small>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
+
+        <!-- Sales -->
+        <div class="col-md-4">
+            <div class="card h-100 border-primary shadow-sm">
+                <div class="card-header bg-primary text-white text-center fw-bold">Total Sales Value</div>
+                <div class="card-body text-center">
+                    <h3 class="text-primary mt-2">₦{{ '{:,.2f}'.format(total_sales) }}</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- Costs -->
+        <div class="col-md-4">
+            <div class="card h-100 border-warning shadow-sm">
+                <div class="card-header bg-warning text-dark text-center fw-bold">Total Production Costs</div>
+                <div class="card-body text-center">
+                    <h3 class="text-dark mt-2">₦{{ '{:,.2f}'.format(total_costs) }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====================================================== -->
+    <!-- REPORT TABLE -->
+    <!-- ====================================================== -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Detailed Flock History</h5>
+            <small class="text-muted">Period: {{ start_date }} to {{ end_date }}</small>
+        </div>
+        <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-striped table-hover">
-                    <thead class="table-light">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="table-dark">
                         <tr>
-                            <th>Flock Name / Breed</th>
-                            <th>Acquired</th>
-                            <th class="text-center">Bird Count</th>
-                            <th class="text-center">Status</th>
-                            <th class="text-end">Sale Price</th>
-                            <th class="text-end">Feed Cost</th>
-                            <th class="text-end">Net Profit/Loss</th>
+                            <th style="width: 20%;">Flock Name / Breed</th>
+                            <th style="width: 15%;">Acquired</th>
+                            <th style="width: 10%;" class="text-center">Count</th>
+                            <th style="width: 10%;" class="text-center">Status</th>
+                            <th style="width: 15%;" class="text-end">Sale Price</th>
+                            <th style="width: 15%;" class="text-end">Total Cost</th>
+                            <th style="width: 15%;" class="text-end">Net Profit</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for flock in all_flocks %}
-                        <tr class="{{ 'table-success' if (flock.net_profit or 0) > 0 else 'table-danger' if flock.status == 'Inactive' }}">
-                            <td><strong>{{ flock.flock_name }}</strong><br><small class="text-muted">{{ flock.breed }}</small></td>
+                        <tr>
+                            <td>
+                                <strong>{{ flock.flock_name }}</strong>
+                                <br><small class="text-muted">{{ flock.breed }}</small>
+                            </td>
                             <td>{{ flock.acquisition_date }}</td>
                             <td class="text-center">{{ flock.bird_count }}</td>
                             <td class="text-center">
-                                <span class="badge bg-{{ 'secondary' if flock.status == 'Inactive' else 'primary' }}">{{ flock.status }}</span>
+                                {% if flock.status == 'Active' %}
+                                    <span class="badge bg-success">Active</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
                             </td>
                             <td class="text-end">₦{{ '{:,.2f}'.format(flock.final_sale_price or 0) }}</td>
-                            <td class="text-end">₦{{ '{:,.2f}'.format(flock.total_cost or flock.calculated_feed_cost) }}</td>
-                            <td class="text-end"><strong>₦{{ '{:,.2f}'.format(flock.net_profit or 0) }}</strong></td>
+                            <td class="text-end">₦{{ '{:,.2f}'.format(flock.total_cost or flock.calculated_feed_cost or 0) }}</td>
+                            <td class="text-end fw-bold {{ 'text-success' if (flock.net_profit or 0) > 0 else 'text-danger' }}">
+                                ₦{{ '{:,.2f}'.format(flock.net_profit or 0) }}
+                            </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="7" class="text-center p-4">No flocks found in the system.</td></tr>
+                        <tr><td colspan="7" class="text-center p-5 text-muted">No flocks found for this period.</td></tr>
                         {% endfor %}
                     </tbody>
+                    
+                    <!-- TOTALS FOOTER -->
+                    <tfoot class="table-dark border-top border-3">
+                        <tr class="fw-bold align-middle">
+                            <td colspan="2" class="text-end text-uppercase py-3">Grand Totals:</td>
+                            <td class="text-center py-3">{{ total_birds }}</td>
+                            <td></td> <!-- Spacer for Status column -->
+                            <td class="text-end py-3">₦{{ '{:,.2f}'.format(total_sales) }}</td>
+                            <td class="text-end py-3 text-warning">₦{{ '{:,.2f}'.format(total_costs) }}</td>
+                            <td class="text-end py-3 text-success">₦{{ '{:,.2f}'.format(total_profit) }}</td>
+                        </tr>
+                    </tfoot>
+                    
                 </table>
             </div>
         </div>
+        <div class="card-footer text-center text-muted small no-print">
+            Generated on {{ now.strftime('%Y-%m-%d') }}
+        </div>
     </div>
-    
+
     <!-- ====================================================== -->
     <!-- CSS FOR PRINTING -->
     <!-- ====================================================== -->
     <style>
     @media print {
         .no-print { display: none !important; }
-        .print-show { display: block !important; }
-        body, .card {
-            border: none !important;
-            box-shadow: none !important;
-        }
-        a { text-decoration: none; color: #000; }
+        .card { border: none !important; box-shadow: none !important; }
+        .badge { border: 1px solid #000; color: #000 !important; background: none !important; }
+        .table-dark { background-color: #ccc !important; color: #000 !important; border-top: 2px solid #000 !important; }
     }
     </style>
 {% endblock %}
