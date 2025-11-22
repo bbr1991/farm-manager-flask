@@ -2458,7 +2458,7 @@ def add_inventory_item():
         # 1. Get Form Data
         name = request.form.get('name')
         category = request.form.get('category')
-        barcode = request.form.get('barcode') # <--- NEW BARCODE FIELD
+        barcode = request.form.get('barcode') 
         quantity = float(request.form.get('quantity', 0))
         unit = request.form.get('unit')
         low_stock_threshold = float(request.form.get('low_stock_threshold', 0))
@@ -2487,8 +2487,7 @@ def add_inventory_item():
             INSERT INTO inventory (name, category, barcode, quantity, unit, low_stock_threshold, unit_cost, sale_price, expiry_date)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (name, category, barcode, quantity, unit, low_stock_threshold, unit_cost, sale_price, expiry_date))
-        new_item_id = cursor.lastrowid
-
+        
         # 4. Financial Journal Entry (if cost > 0)
         if quantity > 0 and unit_cost > 0:
             total_purchase_value = quantity * unit_cost
@@ -2503,6 +2502,7 @@ def add_inventory_item():
         db.commit()
         flash(f"New item '{name}' added successfully!", 'success')
 
+    # --- THIS WAS MISSING OR CUT OFF ---
     except (ValueError, TypeError) as e:
         db.rollback()
         flash(f"Invalid number provided: {e}", 'danger')
