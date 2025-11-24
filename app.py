@@ -3241,9 +3241,6 @@ def log_brooding_mortality():
 @login_required
 @permission_required('transfer_brooding_batch')
 def transfer_brooding_batch():
-    """
-    Handles transferring a completed brooding batch to a laying flock.
-    """
     db = get_db()
     try:
         batch_id = int(request.form.get('batch_id'))
@@ -3252,25 +3249,33 @@ def transfer_brooding_batch():
 
         batch = db.execute("SELECT * FROM brooding_batches WHERE id = ?", (batch_id,)).fetchone()
         if not batch:
-            flash("Brooding batch not found.", "danger")
+            flash("Batch not found.", "danger")
             return redirect(url_for('brooding_dashboard'))
         
-        feed_cost_row = db.execute(
-            "SELECT COALESCE(SUM(cost_of_usage), 0) as total FROM inventory_log WHERE brooding_batch_id = ?",
-            (batch_id,)
-        ).fetchone()
+        # 1. Get Inventory Costs (Feed/Meds)
+        inv_cost_row = db.execute("SELECT COALESCE(SUM(cost_of_usage), 0) as total FROM inventory_log WHERE brooding_batch_id = ?", (batch_id,)).fetchone()
         
-        final_total_cost = (batch['initial_cost'] or 0) + (feed_cost_row['total'] or 0)
+        # 2. Get Direct Expense Costs (Labor/Heating) - NEW
+        dir_cost_row = db.execute("SELECT COALESCE(SUM(amount), 0) as total FROM journal_entries WHERE brooding_batch_id = ?", (batch_id,)).fetchone()
+
+        # 3. Calculate Final Total Value
+        final_total_cost = (batch['initial_cost'] or 0) + (inv_cost_row['total'] or 0) + (dir_cost_row['total'] or 0)
+        
         surviving_birds = batch['current_chick_count']
         final_cost_per_bird = final_total_cost / surviving_birds if surviving_birds > 0 else 0
 
+        # 4. Update Target Flock (Weighted Average Cost)
         target_flock = db.execute("SELECT bird_count, cost_per_bird FROM poultry_flocks WHERE id = ?", (target_flock_id,)).fetchone()
         
         current_flock_value = (target_flock['bird_count'] or 0) * (target_flock['cost_per_bird'] or 0)
-        new_birds_value = surviving_birds * final_cost_per_bird
-        new_total_birds_in_flock = (target_flock['bird_count'] or 0) + surviving_birds
-        new_average_cost = (current_flock_value + new_birds_value) / new_total_birds_in_flock if new_total_birds_in_flock > 0 else 0
+        new_batch_value = final_total_cost
+        
+        new_total_birds = (target_flock['bird_count'] or 0) + surviving_birds
+        new_total_value = current_flock_value + new_batch_value
+        new_average_cost_per_bird = new_total_value / new_total_birds if new_total_birds > 0 else 0
 
+        # 5. Database Updates
+        # Close Brooding Batch
         db.execute("""
             UPDATE brooding_batches SET 
                 status = 'Transferred',
@@ -3281,31 +3286,32 @@ def transfer_brooding_batch():
             WHERE id = ?
         """, (transfer_date, surviving_birds, final_total_cost, final_cost_per_bird, batch_id))
         
+        # Update Laying Flock
         db.execute("""
             UPDATE poultry_flocks SET bird_count = ?, cost_per_bird = ? 
             WHERE id = ?
-        """, (new_total_birds_in_flock, new_average_cost, target_flock_id))
+        """, (new_total_birds, new_average_cost_per_bird, target_flock_id))
         
+        # 6. Journal Entry: Transfer Value from Brooding Asset -> Laying Asset
         if final_total_cost > 0:
-            flock_asset_id = get_account_id('Inventory - Laying Flock Asset', acc_type='Asset', create_if_not_found=False)
-            brooding_asset_id = get_account_id('Inventory - Brooding Livestock', acc_type='Asset', create_if_not_found=False)
+            laying_asset_id = get_account_id('Inventory - Laying Flock Asset', acc_type='Asset', create_if_not_found=True)
+            brooding_asset_id = get_account_id('Inventory - Brooding Livestock', acc_type='Asset', create_if_not_found=True)
             
-            description = f"Transfer of batch ID {batch_id} value to flock ID {target_flock_id}"
+            description = f"Transfer {surviving_birds} birds from Batch {batch['batch_name']} to Flock ID {target_flock_id}"
             
             db.execute("""
                 INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (transfer_date, description, flock_asset_id, brooding_asset_id, final_total_cost, g.user.id))
+            """, (transfer_date, description, laying_asset_id, brooding_asset_id, final_total_cost, g.user.id))
 
         db.commit()
-        flash(f"{surviving_birds} birds successfully transferred. New flock average cost/bird: ₦{new_average_cost:,.2f}", "success")
+        flash(f"Transferred successfully! New Flock Value: ₦{new_average_cost_per_bird:,.2f} per bird.", "success")
 
     except Exception as e:
         db.rollback()
-        flash(f"An error occurred during transfer: {e}", "danger")
+        flash(f"Error: {e}", "danger")
         
     return redirect(url_for('brooding_dashboard'))
-
 @app.route('/poultry/flock/log-mortality', methods=['POST'])
 @login_required
 @permission_required('log_poultry_mortality')
@@ -3317,38 +3323,44 @@ def log_flock_mortality():
         mortality_count = int(request.form.get('mortality_count'))
         log_date = request.form.get('log_date')
         
-        flock = db.execute("SELECT bird_count, cost_per_bird FROM poultry_flocks WHERE id = ?", (flock_id,)).fetchone()
-        if not flock:
-            raise Exception("Flock not found.")
+        # 1. Get current value of the bird
+        flock = db.execute("SELECT flock_name, bird_count, cost_per_bird FROM poultry_flocks WHERE id = ?", (flock_id,)).fetchone()
+        if not flock: raise Exception("Flock not found.")
 
         if mortality_count > flock['bird_count']:
-            flash(f"Cannot log {mortality_count} mortalities. Only {flock['bird_count']} birds in flock.", "danger")
+            flash(f"Error: Cannot log {mortality_count} deaths. Only {flock['bird_count']} birds remaining.", "danger")
             return redirect(url_for('poultry_dashboard'))
         
-        asset_account = get_account_id('Inventory - Laying Flock Asset', acc_type='Asset', create_if_not_found=False)
-        expense_account = get_account_id('Livestock Loss Expense', acc_type='Expense')
-        if not asset_account or not expense_account:
-            raise Exception("Required asset or expense accounts not found in Chart of Accounts.")
-
-        total_loss_value = mortality_count * (flock['cost_per_bird'] or 0)
+        # 2. Calculate Financial Loss
+        # This is the "Cost" of the dead bird based on all money spent raising it
+        cost_per_bird = flock['cost_per_bird'] or 0
+        total_loss_value = mortality_count * cost_per_bird
         
+        # 3. Reduce Flock Count
         db.execute("UPDATE poultry_flocks SET bird_count = bird_count - ? WHERE id = ?", (mortality_count, flock_id))
         
+        # 4. Journal Entry (Expensing the Asset)
+        # Credit: Laying Flock Asset (Reduce value of asset)
+        # Debit: Livestock Loss Expense (Recognize the loss immediately)
         if total_loss_value > 0:
+            asset_account = get_account_id('Inventory - Laying Flock Asset', acc_type='Asset', create_if_not_found=True)
+            expense_account = get_account_id('Livestock Loss Expense', acc_type='Expense', create_if_not_found=True)
+            
+            description = f"Mortality: {mortality_count} birds from {flock['flock_name']} @ ₦{cost_per_bird:,.2f}/bird"
+            
             db.execute("""
                 INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_flock_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (log_date, f"Mortality loss of {mortality_count} bird(s) from flock ID {flock_id}", expense_account, asset_account, total_loss_value, g.user.id, flock_id))
+            """, (log_date, description, expense_account, asset_account, total_loss_value, g.user.id, flock_id))
 
         db.commit()
-        flash(f"{mortality_count} mortalities recorded. Financial loss of ₦{total_loss_value:,.2f} posted to expenses.", "success")
+        flash(f"Recorded {mortality_count} mortality. Financial Loss of ₦{total_loss_value:,.2f} posted to expenses.", "success")
 
     except Exception as e:
         db.rollback()
         flash(f"An error occurred: {e}", "danger")
 
     return redirect(url_for('poultry_dashboard'))
-
 @app.route('/brooding/batch/edit/<int:batch_id>', methods=['POST'])
 @login_required
 @permission_required('add_brooding_batch')
