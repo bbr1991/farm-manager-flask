@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% block title %}Smart Feed Formulator{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom no-print">
+        <h1 class="h2"><i class="bi bi-calculator-fill me-2"></i>Feed Mixer</h1>
+        <div>
+            <button class="btn btn-outline-primary btn-sm me-2" data-bs-toggle="modal" data-bs-target="#priceUpdateModal">
+                <i class="bi bi-tag-fill"></i> Market Prices
+            </button>
+            <button class="btn btn-dark btn-sm" onclick="window.print()">
+                <i class="bi bi-printer"></i> Print Work Order
+            </button>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- LEFT COLUMN: CONTROLS & TABLE -->
+        <div class="col-lg-9">
+            
+            <!-- STEP 1: TARGET SETTING & PRESETS -->
+            <div class="card shadow-sm mb-3 border-primary">
+                <div class="card-body py-3">
+                    <div class="row align-items-center">
+                        <div class="col-md-4 border-end">
+                            <label class="fw-bold text-primary small text-uppercase">1. Target Weight</label>
+                            <div class="input-group">
+                                <input type="number" id="targetBatchSize" class="form-control fw-bold fs-5" value="25" min="1">
+                                <span class="input-group-text">Kg</span>
+                            </div>
+                        </div>
+                        <div class="col-md-8 text-end no-print">
+                            <label class="fw-bold text-muted mb-1 d-block small text-uppercase">2. Quick Load Recipe:</label>
+                            
+                            <!-- Broiler Buttons -->
+                            <div class="btn-group me-2 mb-1">
+                                <button class="btn btn-sm btn-outline-danger fw-bold" disabled>Broilers:</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadPreset('broiler_starter')">Starter</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadPreset('broiler_finisher')">Finisher</button>
+                            </div>
+
+                            <!-- Layer Buttons -->
+                            <div class="btn-group mb-1">
+                                <button class="btn btn-sm btn-outline-warning fw-bold text-dark" disabled>Layers:</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadPreset('chick_mash')">Chick</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadPreset('grower_mash')">Grower</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadPreset('layer_mash')">Layer</button>
+                            </div>
+                            
+                            <button class="btn btn-sm btn-light text-danger border ms-2" onclick="clearAll()">Clear</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 2: THE MIXER TABLE -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-light fw-bold">STEP 3: Composition</div>
+                <div class="card-body p-0">
+                    <form action="{{ url_for('feed_formulator') }}" method="POST" id="formulaForm">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle mb-0" id="calcTable">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th style="width: 25%;">Ingredient</th>
+                                        <th style="width: 15%;">Market Price (₦/kg)</th>
+                                        <th style="width: 15%;" class="bg-warning text-dark">Inclusion (%)</th>
+                                        <th style="width: 20%;" class="bg-success text-white border-start">RESULT: NEED (Kg)</th>
+                                        <th style="width: 25%;">Cost (₦)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ing in ingredients %}
+                                    <tr>
+                                        <td class="fw-bold text-secondary">
+                                            {{ ing.name }}
+                                            <input type="hidden" class="ing-name" value="{{ ing.name }}"> 
+                                            <input type="hidden" class="ing-id" value="{{ ing.id }}">
+                                            <input type="hidden" class="ing-cp-val" value="{{ ing.cp_percent }}">
+                                            <input type="hidden" class="ing-me-val" value="{{ ing.me_value }}">
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm input-price" value="{{ ing.price_per_kg }}" step="0.01">
+                                        </td>
+                                        <td class="bg-warning bg-opacity-10">
+                                            <input type="number" class="form-control form-control-sm input-percent fw-bold" placeholder="0" min="0" step="0.01">
+                                        </td>
+                                        <td class="bg-success bg-opacity-25 border-start text-center">
+                                            <span class="calc-kg fs-5 fw-bold text-dark">0.00</span>
+                                        </td>
+                                        <td class="text-end">
+                                            <span class="calc-cost">0.00</span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                                <tfoot class="table-secondary border-top border-3 fw-bold">
+                                    <tr>
+                                        <td colspan="2" class="text-end">TOTALS:</td>
+                                        <td class="text-center">
+                                            <span id="totalPercent" class="text-danger">0</span>%
+                                        </td>
+                                        <td class="text-center border-start bg-white">
+                                            <span id="totalWeight" class="fs-5 text-primary">0.00</span> kg
+                                        </td>
+                                        <td class="text-end text-success">
+                                            <span id="totalCost">0.00</span>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <!-- Hidden Inputs -->
+                        <input type="hidden" name="total_weight" id="formTotalWeight">
+                        <input type="hidden" name="final_cp" id="formFinalCP">
+                        <input type="hidden" name="final_me" id="formFinalME">
+                        <input type="hidden" name="final_cost_per_kg" id="formCostPerKg">
+                        <input type="hidden" name="ingredients_json" id="formIngredientsJSON">
+
+                        <div class="card-footer bg-white p-3 no-print">
+                            <div class="row align-items-center">
+                                <div class="col-md-8">
+                                    <input type="text" name="formula_name" class="form-control" placeholder="Enter Name to Save Formula (e.g. My Special Layer Mix)" required>
+                                </div>
+                                <div class="col-md-4 text-end">
+                                    <button type="submit" class="btn btn-success w-100">
+                                        <i class="bi bi-save"></i> Save Formula
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: ANALYSIS -->
+        <div class="col-lg-3">
+            <!-- Analysis Card -->
+            <div class="card shadow-sm mb-4 sticky-top" style="top: 20px; z-index: 1;">
+                <div class="card-header bg-dark text-white">
+                    <h6 class="mb-0">Final Analysis</h6>
+                </div>
+                <div class="card-body">
+                    <!-- COST SECTION -->
+                    <div class="text-center mb-3">
+                        <small class="text-muted text-uppercase">Cost for this Batch</small>
+                        <h2 class="text-success fw-bold">₦<span id="analysisCostBatch">0.00</span></h2>
+                    </div>
+                    
+                    <ul class="list-group list-group-flush small">
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span>Cost per Kg:</span>
+                            <strong>₦<span id="analysisCostKg">0.00</span></strong>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span>Cost per 25kg Bag:</span>
+                            <strong>₦<span id="analysisCostBag">0.00</span></strong>
+                        </li>
+                    </ul>
+
+                    <hr>
+
+                    <!-- NUTRITION SECTION -->
+                    <div class="mb-2">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>Crude Protein (CP):</span>
+                            <span class="fw-bold" id="analysisCP">0.0%</span>
+                        </div>
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-info" id="barCP" style="width: 0%"></div>
+                        </div>
+                        <small class="text-muted" style="font-size: 0.7em;">Target: Broiler ~23%, Layer ~16%</small>
+                    </div>
+                    
+                    <div>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>Energy (ME):</span>
+                            <span class="fw-bold" id="analysisME">0</span>
+                        </div>
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-warning" id="barME" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Price Update Modal -->
+<div class="modal fade" id="priceUpdateModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Update Market Prices</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('update_feed_ingredient_price') }}" method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Ingredient</label>
+                        <select name="ingredient_id" class="form-select">
+                            {% for ing in ingredients %}
+                            <option value="{{ ing.id }}">{{ ing.name }} (Current: {{ ing.price_per_kg }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New Price per Kg</label>
+                        <input type="number" name="price" class="form-control" step="0.01" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Update</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    // --- PRESET FORMULAS (Standard Poultry Ratios) ---
+    const presets = {
+        // BROILERS
+        'broiler_starter': { // High Protein (23%)
+            'Maize': 50, 'Soya Bean Meal': 30, 'Groundnut Cake (GNC)': 10, 
+            'Fish Meal (72%)': 4, 'Wheat Offal': 2, 'Bone Meal': 2, 
+            'Limestone/Oyster Shell': 1, 'Broiler Premix': 0.5, 
+            'Methionine': 0.2, 'Lysine': 0.2, 'Salt': 0.1
+        },
+        'broiler_finisher': { // Lower Protein (20%), High Energy
+            'Maize': 60, 'Soya Bean Meal': 20, 'Groundnut Cake (GNC)': 10, 
+            'Wheat Offal': 5, 'Bone Meal': 2, 'Limestone/Oyster Shell': 1.5, 
+            'Fish Meal (72%)': 1, 'Broiler Premix': 0.25, 
+            'Methionine': 0.1, 'Lysine': 0.1, 'Salt': 0.05
+        },
+
+        // LAYERS
+        'chick_mash': { // Balanced (0-8 Weeks)
+            'Maize': 48, 'Soya Bean Meal': 20, 'Groundnut Cake (GNC)': 10,
+            'Wheat Offal': 18, 'Bone Meal': 2, 'Limestone/Oyster Shell': 1,
+            'Fish Meal (72%)': 0.5, 'Layer Premix': 0.25, 'Salt': 0.25
+        },
+        'grower_mash': { // High Fiber (8-18 Weeks)
+            'Maize': 40, 'Wheat Offal': 35, 'Soya Bean Meal': 10, 
+            'Groundnut Cake (GNC)': 10, 'Bone Meal': 2, 'Limestone/Oyster Shell': 2,
+            'Layer Premix': 0.25, 'Methionine': 0.1, 'Lysine': 0.1, 'Salt': 0.5
+        },
+        'layer_mash': { // High Calcium (18+ Weeks)
+            'Maize': 50, 'Soya Bean Meal': 18, 'Groundnut Cake (GNC)': 8, 
+            'Wheat Offal': 10, 'Limestone/Oyster Shell': 9, 'Bone Meal': 3, 
+            'Fish Meal (72%)': 1, 'Layer Premix': 0.25, 
+            'Methionine': 0.15, 'Lysine': 0.1, 'Salt': 0.5
+        }
+    };
+
+    function loadPreset(type) {
+        clearAll();
+        const recipe = presets[type];
+        if (!recipe) return;
+
+        const rows = document.querySelectorAll('#calcTable tbody tr');
+        rows.forEach(row => {
+            const name = row.querySelector('.ing-name').value;
+            const percentInput = row.querySelector('.input-percent');
+            
+            // Fuzzy match logic
+            for (const [key, value] of Object.entries(recipe)) {
+                if (name.includes(key) || key.includes(name)) {
+                    percentInput.value = value;
+                }
+            }
+        });
+        calculate();
+    }
+
+    function clearAll() {
+        document.querySelectorAll('.input-percent').forEach(i => i.value = '');
+        calculate();
+    }
+
+    // --- CALCULATION ENGINE ---
+    const targetInput = document.getElementById('targetBatchSize');
+    const percentInputs = document.querySelectorAll('.input-percent');
+    const priceInputs = document.querySelectorAll('.input-price');
+    
+    function calculate() {
+        const targetBatch = parseFloat(targetInput.value) || 0;
+        
+        let sumPercent = 0;
+        let sumWeight = 0;
+        let sumCost = 0;
+        let sumCP = 0; 
+        let sumME = 0; 
+        let ingredientsList = [];
+
+        // Loop rows
+        document.querySelectorAll('#calcTable tbody tr').forEach(row => {
+            const percentInput = row.querySelector('.input-percent');
+            const percent = parseFloat(percentInput.value) || 0;
+            const price = parseFloat(row.querySelector('.input-price').value) || 0;
+            
+            const cpVal = parseFloat(row.querySelector('.ing-cp-val').value) || 0;
+            const meVal = parseFloat(row.querySelector('.ing-me-val').value) || 0;
+            const name = row.querySelector('.ing-name').value;
+
+            if (percent > 0) {
+                const weight = (percent / 100) * targetBatch;
+                const cost = weight * price;
+
+                // Weighted Nutrition
+                const cpContrib = (cpVal * percent) / 100;
+                const meContrib = (meVal * percent) / 100;
+
+                // Update UI
+                row.querySelector('.calc-kg').innerText = weight.toFixed(2);
+                row.querySelector('.calc-cost').innerText = cost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+                // Totals
+                sumPercent += percent;
+                sumWeight += weight;
+                sumCost += cost;
+                sumCP += cpContrib;
+                sumME += meContrib;
+                
+                ingredientsList.push({name: name, kg: weight, percent: percent});
+            } else {
+                row.querySelector('.calc-kg').innerText = "0.00";
+                row.querySelector('.calc-cost').innerText = "0.00";
+            }
+        });
+
+        const costPerKg = sumWeight > 0 ? (sumCost / sumWeight) : 0;
+
+        // Update Totals
+        const percentEl = document.getElementById('totalPercent');
+        percentEl.innerText = sumPercent.toFixed(1);
+        percentEl.className = Math.abs(sumPercent - 100) < 0.5 ? 'text-success fw-bold' : 'text-danger fw-bold';
+
+        document.getElementById('totalWeight').innerText = sumWeight.toFixed(2);
+        document.getElementById('totalCost').innerText = '₦' + sumCost.toLocaleString(undefined, {minimumFractionDigits: 2});
+
+        // Analysis Panel
+        document.getElementById('analysisCostBatch').innerText = sumCost.toLocaleString(undefined, {minimumFractionDigits: 2});
+        document.getElementById('analysisCostKg').innerText = costPerKg.toLocaleString(undefined, {minimumFractionDigits: 2});
+        document.getElementById('analysisCostBag').innerText = (costPerKg * 25).toLocaleString(undefined, {minimumFractionDigits: 2});
+        
+        document.getElementById('analysisCP').innerText = sumCP.toFixed(2) + '%';
+        document.getElementById('analysisME').innerText = sumME.toFixed(0);
+
+        // Visual Bars
+        const cpPercent = Math.min((sumCP / 23) * 100, 100);
+        const mePercent = Math.min((sumME / 3200) * 100, 100);
+        document.getElementById('barCP').style.width = cpPercent + '%';
+        document.getElementById('barME').style.width = mePercent + '%';
+
+        // Hidden Form
+        document.getElementById('formTotalWeight').value = sumWeight;
+        document.getElementById('formFinalCP').value = sumCP;
+        document.getElementById('formFinalME').value = sumME;
+        document.getElementById('formCostPerKg').value = costPerKg;
+        document.getElementById('formIngredientsJSON').value = JSON.stringify(ingredientsList);
+    }
+
+    targetInput.addEventListener('input', calculate);
+    percentInputs.forEach(i => i.addEventListener('input', calculate));
+    priceInputs.forEach(i => i.addEventListener('input', calculate));
+    
+    calculate();
+</script>
+
+<style>
+@media print {
+    .no-print { display: none !important; }
+    .card { border: 1px solid #000 !important; box-shadow: none !important; }
+    .bg-success { background-color: #ddd !important; color: #000 !important; -webkit-print-color-adjust: exact; }
+    input { border: none !important; }
+}
+</style>
+{% endblock %}

@@ -20,7 +20,7 @@
 <body>
     <div class="wrapper">
         <!-- ====================================================== -->
-        <!-- Redesigned Sidebar Navigation -->
+        <!-- SIDEBAR NAVIGATION -->
         <!-- ====================================================== -->
         <nav id="sidebar" class="no-print">
             <div class="sidebar-header">
@@ -32,14 +32,18 @@
 
             <ul class="list-unstyled components">
                 <li class="sidebar-menu-header">MENU</li>
-                <li><a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}"><i class="bi bi-grid-1x2-fill"></i>Dashboard</a></li>
+                <li>
+                    <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">
+                        <i class="bi bi-grid-1x2-fill"></i> Dashboard
+                    </a>
+                </li>
 
-                <!-- LIVESTOCK SUB-MENU WITH PERMISSION CHECKS -->
-                <li class="sidebar-menu-header mt-3">LIVESTOCK</li>
+                <!-- LIVESTOCK SUB-MENU -->
                 {% if g.user and (g.user.has_permission('view_brooding_dashboard') or g.user.has_permission('view_poultry_dashboard')) %}
+                <li class="sidebar-menu-header mt-3">LIVESTOCK</li>
                 <li>
                     <a href="#poultrySubmenu" data-bs-toggle="collapse" aria-expanded="false" class="dropdown-toggle {% if 'poultry' in request.endpoint or 'brooding' in request.endpoint %}active{% endif %}">
-                        <i class="bi bi-egg-fried"></i>Poultry
+                        <i class="bi bi-egg-fried"></i> Poultry
                     </a>
                     <ul class="collapse list-unstyled" id="poultrySubmenu">
                         {% if g.user.has_permission('view_brooding_dashboard') %}
@@ -52,25 +56,37 @@
                 </li>
                 {% endif %}
                 
-                <!-- OPERATIONS WITH GRANULAR PERMISSION CHECKS -->
+                <!-- OPERATIONS MENU -->
                 <li class="sidebar-menu-header mt-3">OPERATIONS</li>
+                
+                <!-- VET ASSISTANT (Added Correctly Here) -->
+                <li>
+                    <a href="{{ url_for('vet_dashboard') }}" class="{% if 'vet' in request.endpoint %}active{% endif %}">
+                        <i class="bi bi-heart-pulse-fill text-danger"></i> Vet Assistant
+                    </a>
+                </li>
+
                 {% if g.user.has_permission('view_inventory_dashboard') %}
-                    <li><a href="{{ url_for('inventory_dashboard') }}" class="{% if 'inventory' in request.endpoint %}active{% endif %}"><i class="bi bi-boxes"></i>Inventory</a></li>
-                {% endif %}
-                {% if g.user.has_permission('manage_phone_charging') %}
-                    <li><a href="{{ url_for('phone_charging_dashboard') }}" class="{% if 'phone_charging' in request.endpoint %}active{% endif %}"><i class="bi bi-phone-fill"></i>Phone Charging</a></li>
-                {% endif %}
-                {% if g.user.has_permission('view_sales_packages') %}
-                    <li><a href="{{ url_for('manage_sales_packages') }}" class="{% if request.endpoint == 'manage_sales_packages' %}active{% endif %}"><i class="bi bi-tags-fill"></i>Sales Packages</a></li>
-                {% endif %}
-                {% if g.user.has_permission('view_water_dashboard') %}
-                    <li><a href="{{ url_for('water_dashboard') }}" class="{% if 'water' in request.endpoint %}active{% endif %}"><i class="bi bi-moisture"></i>Water</a></li>
-                {% endif %}
-                {% if g.user.has_permission('view_contacts_dashboard') %}
-                    <li><a href="{{ url_for('contacts_dashboard') }}" class="{% if 'contacts' in request.endpoint %}active{% endif %}"><i class="bi bi-people-fill"></i>Contacts</a></li>
+                    <li><a href="{{ url_for('inventory_dashboard') }}" class="{% if 'inventory' in request.endpoint %}active{% endif %}"><i class="bi bi-boxes"></i> Inventory</a></li>
                 {% endif %}
                 
-                <!-- FINANCE & ADMIN WITH GRANULAR PERMISSION CHECKS -->
+                {% if g.user.has_permission('manage_phone_charging') %}
+                    <li><a href="{{ url_for('phone_charging_dashboard') }}" class="{% if 'phone_charging' in request.endpoint %}active{% endif %}"><i class="bi bi-phone-fill"></i> Phone Charging</a></li>
+                {% endif %}
+                
+                {% if g.user.has_permission('view_sales_packages') %}
+                    <li><a href="{{ url_for('manage_sales_packages') }}" class="{% if request.endpoint == 'manage_sales_packages' %}active{% endif %}"><i class="bi bi-tags-fill"></i> Sales Packages</a></li>
+                {% endif %}
+                
+                {% if g.user.has_permission('view_water_dashboard') %}
+                    <li><a href="{{ url_for('water_dashboard') }}" class="{% if 'water' in request.endpoint %}active{% endif %}"><i class="bi bi-moisture"></i> Water</a></li>
+                {% endif %}
+                
+                {% if g.user.has_permission('view_contacts_dashboard') %}
+                    <li><a href="{{ url_for('contacts_dashboard') }}" class="{% if 'contacts' in request.endpoint %}active{% endif %}"><i class="bi bi-people-fill"></i> Contacts</a></li>
+                {% endif %}
+                
+                <!-- FINANCE & ADMIN MENU -->
                 {% set can_view_finance = g.user.has_permission('view_financial_center') or 
                                            g.user.has_permission('view_chart_of_accounts') or
                                            g.user.has_permission('view_general_journal') or
@@ -80,7 +96,7 @@
                 <li class="sidebar-menu-header mt-3">FINANCE & ADMIN</li>
                 <li>
                     <a href="#financialSubmenu" data-bs-toggle="collapse" aria-expanded="false" class="dropdown-toggle {% if 'financial' in request.endpoint or 'report' in request.endpoint or 'chart_of_accounts' in request.endpoint or 'general_journal' in request.endpoint or 'batch_deposit' in request.endpoint %}active{% endif %}">
-                        <i class="bi bi-bank"></i>Financials
+                        <i class="bi bi-bank"></i> Financials
                     </a>
                     <ul class="collapse list-unstyled" id="financialSubmenu">
                         {% if g.user.has_permission('view_financial_center') %}
@@ -100,8 +116,7 @@
                         {% endif %}
                         {% if g.user.has_permission('view_reports_dashboard') %}
                             <li><a href="{{ url_for('reports_dashboard') }}">Reports Center</a></li>
-                            {# NEW: Add specific report links here for quick access #}
-                            <li><a href="{{ url_for('report_daily_egg_production_cost') }}">Daily Egg Production Cost Report</a></li> 
+                            <li><a href="{{ url_for('report_daily_egg_production_cost') }}">Daily Egg Cost</a></li> 
                         {% endif %}
                     </ul>
                 </li>
@@ -109,8 +124,11 @@
             </ul>
         </nav>
 
-        <!-- Main Page Content -->
+        <!-- ====================================================== -->
+        <!-- MAIN PAGE CONTENT -->
+        <!-- ====================================================== -->
         <div id="content">
+            <!-- Top Navbar -->
             <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm top-navbar no-print mb-4">
                 <div class="container-fluid">
                     <button type="button" id="sidebarCollapse" class="btn btn-primary" aria-controls="sidebar" aria-expanded="false">
@@ -140,7 +158,11 @@
                     </ul>
                 </div>
             </nav>
-
+                    <li>
+    <a href="{{ url_for('feed_formulator') }}" class="{% if 'feed' in request.endpoint %}active{% endif %}">
+        <i class="bi bi-calculator-fill text-warning"></i> Feed Formulator
+    </a>
+</li>
             <!-- Flash Messages -->
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}{% for category, message in messages %}
@@ -150,7 +172,7 @@
                 {% endfor %}{% endif %}
             {% endwith %}
 
-            <!-- Page Content Block -->
+            <!-- Dynamic Content -->
             <main>
                 {% block content %}{% endblock %}
             </main>
@@ -166,6 +188,7 @@
     
     {% block scripts %}{% endblock %}
 
+    <!-- Service Worker for PWA -->
     <script>
       if ('serviceWorker' in navigator && 'SyncManager' in window) {
         window.addEventListener('load', () => {

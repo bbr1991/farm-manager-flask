@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}AI Vet Assistant{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2 no-print">
+        <h1 class="h2 text-danger"><i class="bi bi-heart-pulse-fill me-2"></i>Vet Assistant</h1>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Back Home</a>
+    </div>
+
+    <div class="row">
+        <!-- LEFT: SYMPTOM CHECKER -->
+        <div class="col-md-4 no-print">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-clipboard2-pulse"></i> Observe & Check</h5>
+                </div>
+                <div class="card-body bg-light">
+                    <form action="{{ url_for('vet_diagnose') }}" method="POST">
+                        <p class="small text-muted">Tick ALL physical signs you see in the flock:</p>
+                        <div style="max-height: 600px; overflow-y: auto;">
+                            {% for symptom in symptoms %}
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" name="symptoms" value="{{ symptom.id }}" id="sym_{{ symptom.id }}"
+                                {% if selected_ids and symptom.id|string in selected_ids %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="sym_{{ symptom.id }}" style="cursor: pointer;">
+                                    {{ symptom.name }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <hr>
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-danger btn-lg shadow">
+                                <i class="bi bi-search"></i> ANALYZE DIAGNOSIS
+                            </button>
+                            <a href="{{ url_for('vet_dashboard') }}" class="btn btn-outline-secondary btn-sm">Reset Form</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: DIAGNOSIS REPORT -->
+        <div class="col-md-8">
+            {% if diagnosis_results %}
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 class="mb-0">Analysis Results</h4>
+                    <button onclick="window.print()" class="btn btn-sm btn-secondary no-print"><i class="bi bi-printer"></i> Print Prescription</button>
+                </div>
+                
+                {% for result in diagnosis_results %}
+                <div class="card mb-4 shadow-sm border-start border-5 {{ 'border-danger' if result.probability > 50 else 'border-warning' }}">
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h3 class="card-title fw-bold text-dark mb-0">{{ result.name }}</h3>
+                                <p class="text-muted fst-italic">{{ result.description }}</p>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <div class="text-uppercase small fw-bold text-muted">Match Probability</div>
+                                <h2 class="{{ 'text-danger' if result.probability > 70 else 'text-warning' }}">
+                                    {{ result.probability }}%
+                                </h2>
+                                <div class="progress" style="height: 8px;">
+                                    <div class="progress-bar {{ 'bg-danger' if result.probability > 70 else 'bg-warning' }}" role="progressbar" style="width: {{ result.probability }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="alert alert-success h-100 mb-0">
+                                    <h6 class="fw-bold"><i class="bi bi-prescription2"></i> Recommended Treatment</h6>
+                                    <p class="mb-0 small">{{ result.treatment_plan }}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="alert alert-info h-100 mb-0">
+                                    <h6 class="fw-bold"><i class="bi bi-shield-check"></i> Prevention / Control</h6>
+                                    <p class="mb-0 small">{{ result.prevention_plan }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                
+                <div class="alert alert-warning small mt-4 text-center">
+                    <i class="bi bi-exclamation-triangle-fill"></i> 
+                    <strong>Disclaimer:</strong> This is an AI-assisted diagnostic tool based on symptoms. It is not a replacement for laboratory tests. If mortality persists, consult a qualified Veterinarian immediately.
+                </div>
+
+            {% else %}
+                <!-- Empty State -->
+                <div class="text-center py-5 mt-5">
+                    <div class="mb-3 text-muted opacity-25">
+                        <i class="bi bi-heart-pulse fs-1" style="font-size: 5rem;"></i>
+                    </div>
+                    <h3 class="text-muted">Waiting for Symptoms...</h3>
+                    <p class="text-muted">Please observe your flock and check the boxes on the left.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    .no-print { display: none !important; }
+    .card { border: 1px solid #ccc !important; box-shadow: none !important; }
+    .progress { border: 1px solid #ccc; }
+    .progress-bar { background-color: #000 !important; }
+}
+</style>
+{% endblock %}

@@ -6,20 +6,58 @@
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
         <h1 class="h2"><i class="bi bi-egg me-2"></i>Brooding Section</h1>
         <div class="btn-toolbar mb-2 mb-md-0">
+            <!-- NEW BUTTON: Schedule Task -->
+            <button class="btn btn-outline-primary me-2" data-bs-toggle="modal" data-bs-target="#scheduleTaskModal">
+                <i class="bi bi-calendar-plus"></i> Schedule Vax/Task
+            </button>
+
             {% if g.user.has_permission('add_brooding_batch') %}
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addBatchModal">
-                <i class="bi bi-plus-circle-fill"></i> New Brooding Batch
+                <i class="bi bi-plus-circle-fill"></i> New Batch
             </button>
-            {% endif %}
-            {% if g.user.has_permission('run_brooding_report') %}
-            <a href="{{ url_for('report_brooding') }}" class="btn btn-outline-secondary ms-2">
-                <i class="bi bi-clipboard-data-fill"></i> View Report
-            </a>
             {% endif %}
         </div>
     </div>
 
-    <!-- Active Brooding Batches Table -->
+    <!-- NEW: VACCINATION ALARM SYSTEM -->
+    {% if alerts %}
+    <div class="alert alert-warning shadow-sm border-warning mb-4">
+        <h5 class="alert-heading fw-bold"><i class="bi bi-alarm-fill"></i> Upcoming Tasks (Next 7 Days)</h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-borderless mb-0">
+                <thead>
+                    <tr>
+                        <th>Due Date</th>
+                        <th>Batch</th>
+                        <th>Task</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for alert in alerts %}
+                    <tr>
+                        <!-- Highlight today or past due in RED -->
+                        <td class="fw-bold {% if alert.due_date <= today_date %}text-danger{% endif %}">
+                            {{ alert.due_date }} 
+                            {% if alert.due_date == today_date %}(TODAY){% elif alert.due_date < today_date %}(OVERDUE){% endif %}
+                        </td>
+                        <td>{{ alert.batch_name }}</td>
+                        <td><span class="badge bg-info text-dark">{{ alert.task_type }}</span> {{ alert.task_name }}</td>
+                        <td>
+                            <form action="{{ url_for('complete_task', task_id=alert.id) }}" method="POST" style="display:inline;">
+                                <button class="btn btn-sm btn-success py-0">Mark Done</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+    <!-- END ALARM SYSTEM -->
+
+    <!-- Active Brooding Batches Table (Existing Code) -->
     <div class="card shadow-sm">
         <div class="card-header bg-light">
             <h5 class="mb-0">Active Batches</h5>
@@ -31,10 +69,10 @@
                         <tr>
                             <th>Batch Name / Breed</th>
                             <th>Arrival Date</th>
-                            <th class="text-center">Initial / Current Count</th>
+                            <th class="text-center">Initial / Current</th>
                             <th class="text-center">Mortality</th>
                             <th class="text-end">Total Cost</th>
-                            <th class="text-end">Cost/Bird</th> <!-- NEW HEADER -->
+                            <th class="text-end">Cost/Bird</th>
                             <th class="text-center">Actions</th>
                         </tr>
                     </thead>
@@ -53,9 +91,7 @@
                                 {{ batch.initial_chick_count }} / <strong>{{ batch.current_chick_count }}</strong>
                             </td>
                             <td class="text-center text-danger">{{ batch.total_mortality }}</td>
-                            <!-- CORRECTED: Use the new 'total_running_cost' variable -->
                             <td class="text-end">₦{{ '{:,.2f}'.format(batch.total_running_cost) }}</td>
-                            <!-- NEW DATA CELL for Cost/Bird -->
                             <td class="text-end text-info"><strong>₦{{ '{:,.2f}'.format(batch.cost_per_bird_to_date) }}</strong></td>
                             <td class="text-center">
                                 <div class="btn-group">
@@ -68,39 +104,18 @@
                                     {% if g.user.has_permission('transfer_brooding_batch') %}
                                     <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#transferBatchModal" data-batch-id="{{ batch.id }}">Transfer</button>
                                     {% endif %}
-                                    {% if g.user.has_permission('add_brooding_batch') %}
+                                    <!-- Edit/Delete Menu -->
                                     <div class="btn-group">
-                                        <button type="button" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                            More
-                                        </button>
+                                        <button type="button" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown">More</button>
                                         <ul class="dropdown-menu dropdown-menu-end">
-                                            <li>
-                                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#editBatchModal"
-                                                    data-bs-id="{{ batch.id }}"
-                                                    data-bs-name="{{ batch.batch_name }}"
-                                                    data-bs-breed="{{ batch.breed }}"
-                                                    data-bs-arrival-date="{{ batch.arrival_date }}"
-                                                    data-bs-initial-count="{{ batch.initial_chick_count }}"
-                                                    data-bs-initial-cost="{{ batch.initial_cost }}">
-                                                    <i class="bi bi-pencil-fill me-2"></i>Edit Details
-                                                </a>
-                                            </li>
-                                            <li><hr class="dropdown-divider"></li>
-                                            <li>
-                                                <form action="{{ url_for('delete_brooding_batch', batch_id=batch.id) }}" method="POST" onsubmit="return confirm('DELETE ACTION:\n\nAre you sure you want to delete this batch?\n\nThis can ONLY be done if the batch has no feed or mortality history.');">
-                                                    <button type="submit" class="dropdown-item text-danger">
-                                                        <i class="bi bi-trash-fill me-2"></i>Delete Batch
-                                                    </button>
-                                                </form>
-                                            </li>
+                                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#editBatchModal" data-bs-id="{{ batch.id }}" data-bs-name="{{ batch.batch_name }}" data-bs-breed="{{ batch.breed }}" data-bs-arrival-date="{{ batch.arrival_date }}" data-bs-initial-count="{{ batch.initial_chick_count }}" data-bs-initial-cost="{{ batch.initial_cost }}">Edit Details</a></li>
+                                            <li><form action="{{ url_for('delete_brooding_batch', batch_id=batch.id) }}" method="POST" onsubmit="return confirm('Delete this batch?');"><button type="submit" class="dropdown-item text-danger">Delete Batch</button></form></li>
                                         </ul>
                                     </div>
-                                    {% endif %}
                                 </div>
                             </td>
                         </tr>
                         {% else %}
-                        <!-- CORRECTED: Colspan is now 7 -->
                         <tr><td colspan="7" class="text-center p-4 text-muted">No active brooding batches found.</td></tr>
                         {% endfor %}
                     </tbody>
@@ -109,8 +124,55 @@
         </div>
     </div>
     
+    <!-- ======================= -->
     <!-- MODALS -->
+    <!-- ======================= -->
 
+    <!-- NEW: Schedule Task Modal -->
+    <div class="modal fade" id="scheduleTaskModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-calendar-plus"></i> Schedule Vaccination/Task</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form action="{{ url_for('add_task') }}" method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Select Batch</label>
+                            <select name="brooding_batch_id" class="form-select" required>
+                                {% for batch in active_batches %}
+                                <option value="{{ batch.id }}">{{ batch.batch_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Task Name</label>
+                            <input type="text" name="task_name" class="form-control" placeholder="e.g. Gumboro 1st Dose" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Type</label>
+                            <select name="task_type" class="form-select">
+                                <option value="Vaccination">Vaccination</option>
+                                <option value="Medication">Medication</option>
+                                <option value="Debeaking">Debeaking</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Due Date</label>
+                            <input type="date" name="due_date" class="form-control" required>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Save Schedule</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- (Keep your existing Modals: addBatchModal, logUsageModal, logMortalityModal, transferBatchModal, editBatchModal here...) -->
     <!-- Add New Brooding Batch Modal -->
     <div class="modal fade" id="addBatchModal" tabindex="-1" aria-labelledby="addBatchModalLabel" aria-hidden="true">
         <div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="addBatchModalLabel">Add New Brooding Batch</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><form action="{{ url_for('add_brooding_batch') }}" method="POST"><div class="mb-3"><label for="batch_name" class="form-label">Batch Name</label><input type="text" class="form-control" name="batch_name" placeholder="e.g., July Week 2 Layers" required></div><div class="mb-3"><label for="breed" class="form-label">Breed</label><input type="text" class="form-control" name="breed" placeholder="e.g., Isa Brown"></div><div class="row"><div class="col-md-6 mb-3"><label for="arrival_date" class="form-label">Arrival Date</label><input type="date" class="form-control" name="arrival_date" value="{{ today_date }}" required></div><div class="col-md-6 mb-3"><label for="initial_chick_count" class="form-label">Initial Chick Count</label><input type="number" class="form-control" name="initial_chick_count" min="1" required></div></div><div class="mb-3"><label for="initial_cost" class="form-label">Total Purchase Cost (₦)</label><div class="input-group"><span class="input-group-text">₦</span><input type="number" step="0.01" class="form-control" name="initial_cost" placeholder="Total cost for all chicks" required></div></div><div class="mb-3"><label for="payment_account_id" class="form-label">Paid From Account</label><select class="form-select" name="payment_account_id" id="payment_account_id" required><option value="" disabled selected>-- Select cash/bank account --</option>{% for acc in asset_accounts %}<option value="{{ acc.id }}">{{ acc.name }}</option>{% endfor %}</select></div><hr><div class="d-grid"><button type="submit" class="btn btn-primary">Save New Batch</button></div></form></div></div></div>
@@ -127,7 +189,6 @@
                 <div class="modal-body">
                     <form action="{{ url_for('log_inventory_usage') }}" method="POST">
                         <input type="hidden" name="brooding_batch_id" class="batch-id-input">
-                        <!-- CORRECTED: Visible date field instead of hidden -->
                         <div class="mb-3">
                             <label for="usage_log_date" class="form-label">Date of Usage</label>
                             <input type="date" class="form-control" name="log_date" id="usage_log_date" value="{{ today_date }}" required>
@@ -162,7 +223,7 @@
 
     <!-- Transfer Batch to Flock Modal -->
     <div class="modal fade" id="transferBatchModal" tabindex="-1" aria-labelledby="transferBatchModalLabel" aria-hidden="true">
-        <div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="transferBatchModalLabel">Transfer Batch to Active Flock</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><form action="{{ url_for('transfer_brooding_batch') }}" method="POST" onsubmit="return confirm('Are you sure? This will finalize all costs for this batch and transfer the birds.');"><input type="hidden" name="batch_id" class="batch-id-input"><div class="mb-3"><label for="transfer_date" class="form-label">Date of Transfer</label><input type="date" class="form-control" name="transfer_date" id="transfer_date" value="{{ today_date }}" required></div><div class="mb-3"><label for="target_flock_id" class="form-label">Transfer To Flock:</label><select class="form-select" name="target_flock_id" id="target_flock_id" required><option value="" disabled selected>-- Select a target flock --</option>{% for flock in active_flocks %}<option value="{{ flock.id }}">{{ flock.flock_name }}</option>{% endfor %}</select></div><div class="alert alert-info small"><i class="bi bi-info-circle-fill"></i> The system will automatically calculate the total cost (purchase + feed + meds) and the final cost per surviving bird before adding them to the selected flock.</div><hr><div class="d-grid"><button type="submit" class="btn btn-success">Confirm and Transfer Batch</button></div></form></div></div></div>
+        <div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="transferBatchModalLabel">Transfer Batch to Active Flock</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><form action="{{ url_for('transfer_brooding_batch') }}" method="POST" onsubmit="return confirm('Are you sure? This will finalize all costs for this batch and transfer the birds.');"><input type="hidden" name="batch_id" class="batch-id-input"><div class="mb-3"><label for="transfer_date" class="form-label">Date of Transfer</label><input type="date" class="form-control" name="transfer_date" id="transfer_date" value="{{ today_date }}" required></div><div class="mb-3"><label for="target_flock_id" class="form-label">Transfer To Flock:</label><select class="form-select" name="target_flock_id" id="target_flock_id" required><option value="" disabled selected>-- Select a target flock --</option>{% for flock in active_flocks %}<option value="{{ flock.id }}">{{ flock.flock_name }}</option>{% endfor %}</select></div><div class="alert alert-info small"><i class="bi bi-info-circle-fill"></i> The system will automatically calculate the total cost (purchase + feed + meds + direct expenses) and the final cost per surviving bird before adding them to the selected flock.</div><hr><div class="d-grid"><button type="submit" class="btn btn-success">Confirm and Transfer Batch</button></div></form></div></div></div>
     </div>
 
     <!-- Edit Brooding Batch Modal -->
@@ -170,7 +231,6 @@
         <div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="editBatchModalLabel">Edit Brooding Batch</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><form id="editBatchForm" method="POST"><div class="mb-3"><label for="edit_batch_name" class="form-label">Batch Name</label><input type="text" class="form-control" id="edit_batch_name" name="batch_name" required></div><div class="mb-3"><label for="edit_breed" class="form-label">Breed</label><input type="text" class="form-control" id="edit_breed" name="breed"></div><div class="row"><div class="col-md-6 mb-3"><label for="edit_arrival_date" class="form-label">Arrival Date</label><input type="date" class="form-control" id="edit_arrival_date" name="arrival_date" required></div><div class="col-md-6 mb-3"><label for="edit_initial_chick_count" class="form-label">Initial Chick Count</label><input type="number" class="form-control" id="edit_initial_chick_count" name="initial_chick_count" min="1" required></div></div><div class="mb-3"><label for="edit_initial_cost" class="form-label">Total Purchase Cost (₦)</label><div class="input-group"><span class="input-group-text">₦</span><input type="number" step="0.01" class="form-control" id="edit_initial_cost" name="initial_cost" required></div></div><hr><div class="d-grid"><button type="submit" class="btn btn-primary">Save Changes</button></div></form></div></div></div>
     </div>
 {% endblock %}
-
 
 {% block scripts %}
     {{ super() }}
@@ -180,10 +240,10 @@
         modals.forEach(modal => {
             modal.addEventListener('show.bs.modal', function(event) {
                 const button = event.relatedTarget;
-                const batchId = button.getAttribute('data-batch-id');
-                const batchIdInput = modal.querySelector('.batch-id-input');
-                if (batchIdInput) {
-                    batchIdInput.value = batchId;
+                if (button.hasAttribute('data-batch-id')) {
+                    const batchId = button.getAttribute('data-batch-id');
+                    const batchIdInput = modal.querySelector('.batch-id-input');
+                    if (batchIdInput) batchIdInput.value = batchId;
                 }
             });
         });

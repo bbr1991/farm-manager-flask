@@ -3125,7 +3125,124 @@ def delete_inventory_item(item_id):
         db.rollback()
 
     return redirect(url_for('inventory_dashboard'))
+import json # Add this to your imports at the top if not there
 
+# ==============================================================================
+# FEED FORMULATION ROUTES
+# ==============================================================================
+
+@app.route('/feed/formulate', methods=['GET', 'POST'])
+@login_required
+def feed_formulator():
+    db = get_db()
+    
+    if request.method == 'POST':
+        # Save the formula
+        formula_name = request.form.get('formula_name')
+        total_weight = float(request.form.get('total_weight', 0))
+        final_cp = float(request.form.get('final_cp', 0))
+        final_me = float(request.form.get('final_me', 0))
+        final_cost = float(request.form.get('final_cost_per_kg', 0))
+        
+        # Capture the ingredients used (sent as hidden JSON string from frontend)
+        ingredients_data = request.form.get('ingredients_json')
+        
+        db.execute("""
+            INSERT INTO feed_formulas (name, batch_size_kg, final_cp_percent, final_me_value, cost_per_kg, ingredients_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (formula_name, total_weight, final_cp, final_me, final_cost, ingredients_data))
+        db.commit()
+        flash(f"Feed Formula '{formula_name}' saved successfully!", "success")
+        return redirect(url_for('feed_formulator'))
+
+    # GET: Show Calculator
+    ingredients = db.execute("SELECT * FROM feed_ingredients ORDER BY name").fetchall()
+    saved_formulas = db.execute("SELECT * FROM feed_formulas ORDER BY id DESC LIMIT 5").fetchall()
+    
+    return render_template('feed_formulator.html', user=g.user, ingredients=ingredients, saved_formulas=saved_formulas)
+
+@app.route('/feed/ingredient/update', methods=['POST'])
+@login_required
+def update_feed_ingredient_price():
+    """Update the market price of an ingredient."""
+    db = get_db()
+    try:
+        ing_id = int(request.form.get('ingredient_id'))
+        new_price = float(request.form.get('price'))
+        db.execute("UPDATE feed_ingredients SET price_per_kg = ? WHERE id = ?", (new_price, ing_id))
+        db.commit()
+        flash("Price updated.", "success")
+    except Exception as e:
+        flash(f"Error: {e}", "danger")
+    return redirect(url_for('feed_formulator'))
+# ==============================================================================
+# VETERINARY ASSISTANT ROUTES
+# ==============================================================================
+
+@app.route('/vet')
+@login_required
+def vet_dashboard():
+    """Shows the symptom checker interface."""
+    db = get_db()
+    symptoms = db.execute("SELECT * FROM vet_symptoms ORDER BY name").fetchall()
+    return render_template('vet_dashboard.html', user=g.user, symptoms=symptoms)
+@app.route('/vet/diagnose', methods=['POST'])
+@login_required
+def vet_diagnose():
+    db = get_db()
+    selected_symptom_ids = request.form.getlist('symptoms')
+    
+    # 1. Always fetch symptoms to re-render the page
+    all_symptoms = db.execute("SELECT * FROM vet_symptoms ORDER BY name").fetchall()
+
+    if not selected_symptom_ids:
+        flash("Please select at least one symptom.", "warning")
+        return render_template('vet_dashboard.html', user=g.user, symptoms=all_symptoms)
+
+    # 2. Smart Analysis Query
+    # This query calculates how many symptoms matched VS total symptoms defined for that disease
+    placeholders = ','.join('?' for _ in selected_symptom_ids)
+    
+    query = f"""
+        SELECT 
+            d.name, 
+            d.description, 
+            d.treatment_plan, 
+            d.prevention_plan,
+            COUNT(ds.symptom_id) as match_count,
+            (SELECT COUNT(*) FROM vet_disease_symptoms WHERE disease_id = d.id) as total_symptoms_for_disease
+        FROM vet_diseases d
+        JOIN vet_disease_symptoms ds ON d.id = ds.disease_id
+        WHERE ds.symptom_id IN ({placeholders})
+        GROUP BY d.id
+        ORDER BY match_count DESC
+    """
+    
+    raw_results = db.execute(query, selected_symptom_ids).fetchall()
+    
+    # 3. Calculate Probability %
+    diagnosis_results = []
+    for row in raw_results:
+        res = dict(row)
+        # Probability = (Matched / Total Symptoms of Disease) * 100
+        # Logic: If disease has 5 symptoms and you have 4, high probability.
+        if res['total_symptoms_for_disease'] > 0:
+            prob = (res['match_count'] / res['total_symptoms_for_disease']) * 100
+        else:
+            prob = 0
+        res['probability'] = round(prob)
+        diagnosis_results.append(res)
+
+    # Sort by Probability (Highest % first)
+    diagnosis_results.sort(key=lambda x: x['probability'], reverse=True)
+
+    return render_template(
+        'vet_dashboard.html', 
+        user=g.user, 
+        symptoms=all_symptoms, 
+        diagnosis_results=diagnosis_results,
+        selected_ids=selected_symptom_ids
+    )
 # ==============================================================================
 # 13B. BROODING MANAGEMENT ROUTES
 # ==============================================================================
@@ -3133,13 +3250,14 @@ def delete_inventory_item(item_id):
 @login_required
 @permission_required('view_brooding_dashboard')
 def brooding_dashboard():
-    """Displays the new Brooding Management dashboard."""
     db = get_db()
+    today = date.today()
     
+    # 1. Fetch Batches (Existing Logic)
     active_batches_rows = db.execute("""
-        SELECT 
-            b.*,
-            (SELECT COALESCE(SUM(il.cost_of_usage), 0) FROM inventory_log il WHERE il.brooding_batch_id = b.id) as running_feed_cost,
+        SELECT b.*,
+            (SELECT COALESCE(SUM(il.cost_of_usage), 0) FROM inventory_log il WHERE il.brooding_batch_id = b.id) as cost_inventory,
+            (SELECT COALESCE(SUM(je.amount), 0) FROM journal_entries je WHERE je.brooding_batch_id = b.id) as cost_direct,
             (SELECT COALESCE(SUM(bl.mortality_count), 0) FROM brooding_log bl WHERE bl.batch_id = b.id) as total_mortality
         FROM brooding_batches b
         WHERE b.status = 'Brooding'
@@ -3149,18 +3267,25 @@ def brooding_dashboard():
     active_batches = []
     for row in active_batches_rows:
         batch = dict(row)
-        
-        total_running_cost = (batch['initial_cost'] or 0) + (batch['running_feed_cost'] or 0)
+        total_running_cost = (batch['initial_cost'] or 0) + (batch['cost_inventory'] or 0) + (batch['cost_direct'] or 0)
         batch['total_running_cost'] = total_running_cost
-        
-        current_chick_count = batch['current_chick_count']
-        if current_chick_count > 0:
-            batch['cost_per_bird_to_date'] = total_running_cost / current_chick_count
-        else:
-            batch['cost_per_bird_to_date'] = 0
-            
+        current_birds = batch['current_chick_count']
+        batch['cost_per_bird_to_date'] = total_running_cost / current_birds if current_birds > 0 else 0
         active_batches.append(batch)
 
+    # 2. --- NEW: CHECK FOR ALARMS (Due within 7 days) ---
+    seven_days_future = today + timedelta(days=7)
+    
+    alerts = db.execute("""
+        SELECT st.*, bb.batch_name 
+        FROM scheduled_tasks st
+        JOIN brooding_batches bb ON st.brooding_batch_id = bb.id
+        WHERE st.status = 'Pending' 
+        AND st.due_date <= ? 
+        ORDER BY st.due_date ASC
+    """, (seven_days_future,)).fetchall()
+
+    # 3. Fetch Dropdowns (Existing)
     brooding_supplies = db.execute("SELECT * FROM inventory WHERE category IN ('Feed', 'Medication') AND quantity > 0").fetchall()
     active_flocks = db.execute("SELECT id, flock_name FROM poultry_flocks WHERE status = 'Active'").fetchall()
     asset_accounts = db.execute("SELECT * FROM accounts WHERE type = 'Asset' AND name NOT LIKE 'Inventory%' ORDER BY name").fetchall()
@@ -3172,9 +3297,45 @@ def brooding_dashboard():
         brooding_supplies=brooding_supplies,
         active_flocks=active_flocks,
         asset_accounts=asset_accounts,
-        today_date=date.today().strftime('%Y-%m-%d')
+        alerts=alerts, # <--- PASS ALERTS TO TEMPLATE
+        today_date=today.strftime('%Y-%m-%d')
     )
+@app.route('/tasks/add', methods=['POST'])
+@login_required
+@permission_required('edit_production_log') # Or create a 'manage_tasks' permission
+def add_task():
+    db = get_db()
+    try:
+        task_name = request.form.get('task_name')
+        task_type = request.form.get('task_type')
+        due_date = request.form.get('due_date')
+        brooding_batch_id = request.form.get('brooding_batch_id') or None
+        
+        db.execute("""
+            INSERT INTO scheduled_tasks (task_name, task_type, due_date, brooding_batch_id, status)
+            VALUES (?, ?, ?, ?, 'Pending')
+        """, (task_name, task_type, due_date, brooding_batch_id))
+        
+        db.commit()
+        flash(f"Scheduled '{task_name}' successfully.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"Error scheduling task: {e}", "danger")
+        
+    return redirect(request.referrer)
 
+@app.route('/tasks/complete/<int:task_id>', methods=['POST'])
+@login_required
+def complete_task(task_id):
+    db = get_db()
+    try:
+        # Mark as completed
+        db.execute("UPDATE scheduled_tasks SET status = 'Completed' WHERE id = ?", (task_id,))
+        db.commit()
+        flash("Task marked as completed!", "success")
+    except Exception as e:
+        flash(f"Error: {e}", "danger")
+    return redirect(request.referrer)
 @app.route('/brooding/batch/add', methods=['POST'])
 @login_required
 @permission_required('add_brooding_batch')
