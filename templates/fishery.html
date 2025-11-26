@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}Fish Farming Manager{% endblock %}
+
+{% block content %}
+
+<!-- HEADER SECTION (Merged & Corrected) -->
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Fish Farming Dashboard (African Catfish)</h1>
+    <div>
+        <a href="{{ url_for('report_fishery') }}" class="btn btn-secondary">
+            <i class="bi bi-file-earmark-bar-graph"></i> Reports
+        </a>
+        <!-- Vet Assistant Button -->
+        <a href="{{ url_for('fishery_vet_dashboard') }}" class="btn btn-danger text-white">
+            <i class="bi bi-heart-pulse-fill"></i> Vet Assistant
+        </a>
+        
+        <!-- Feed Formulator Button -->
+        <a href="{{ url_for('fishery_feed_formulator') }}" class="btn btn-warning text-dark">
+            <i class="bi bi-calculator-fill"></i> Feed Formulator
+        </a>
+
+        <!-- New Pond Button -->
+        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addPondModal">
+            <i class="bi bi-water"></i> New Pond
+        </button>
+
+        <!-- Stock Batch Button -->
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#stockBatchModal">
+            <i class="bi bi-plus-circle"></i> Stock New Batch
+        </button>
+    </div>
+</div>
+
+<!-- Active Ponds/Batches Overview -->
+<div class="row mb-4">
+    {% for batch in active_batches %}
+    <div class="col-md-6 col-xl-4 mb-3">
+        <div class="card shadow h-100 border-left-info">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">{{ batch.batch_name }}</h6>
+                <span class="badge bg-info">{{ batch.pond_name }}</span>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6 mb-2">
+                        <small class="text-muted">Current Quantity</small>
+                        <h5>{{ batch.current_quantity }} fish</h5>
+                    </div>
+                    <div class="col-6 mb-2">
+                        <small class="text-muted">Total Spent</small>
+                        <h5>₦{{ "{:,.0f}".format(batch.total_cost) }}</h5>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">Feed Consumed</small>
+                        <h5>{{ batch.total_feed_kg }} kg</h5>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">Est. Cost/Fish</small>
+                        <h5>₦{{ "{:,.1f}".format(batch.current_cost_per_fish) }}</h5>
+                    </div>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between">
+                    <button class="btn btn-sm btn-warning" onclick="openLogModal('{{ batch.id }}', '{{ batch.batch_name }}')">
+                        <i class="bi bi-journal-plus"></i> Log Daily
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="openHarvestModal('{{ batch.id }}', '{{ batch.batch_name }}')">
+                        <i class="bi bi-currency-dollar"></i> Harvest
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12 text-center py-5">
+        <p class="text-muted">No active fish batches. Create a pond and stock it to begin.</p>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Log Daily Modal -->
+<div class="modal fade" id="logModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Daily Log</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" id="logTab" role="tablist">
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#feedTab">Feeding</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#mortalityTab">Mortality</button></li>
+                </ul>
+                <div class="tab-content">
+                    <!-- Feed Form -->
+                    <div class="tab-pane fade show active" id="feedTab">
+                        <form action="{{ url_for('log_fish_feed') }}" method="POST">
+                            <input type="hidden" name="batch_id" id="feed_batch_id">
+                            <div class="mb-3">
+                                <label>Date</label>
+                                <input type="date" name="log_date" class="form-control" value="{{ today_date }}" required>
+                            </div>
+                            <div class="mb-3">
+                                <label>Feed Type (Inventory)</label>
+                                <select name="feed_item_id" class="form-select" required>
+                                    {% for item in feed_items %}
+                                    <option value="{{ item.id }}">{{ item.name }} (Stock: {{ item.quantity }}kg)</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label>Quantity Used (Kg)</label>
+                                <input type="number" step="0.1" name="quantity_kg" class="form-control" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">Record Feeding</button>
+                        </form>
+                    </div>
+                    <!-- Mortality Form -->
+                    <div class="tab-pane fade" id="mortalityTab">
+                        <form action="{{ url_for('log_fish_mortality') }}" method="POST">
+                            <input type="hidden" name="batch_id" id="mort_batch_id">
+                            <div class="mb-3">
+                                <label>Date</label>
+                                <input type="date" name="log_date" class="form-control" value="{{ today_date }}" required>
+                            </div>
+                            <div class="mb-3">
+                                <label>Number of Dead Fish</label>
+                                <input type="number" name="mortality_count" class="form-control" required>
+                            </div>
+                            <button type="submit" class="btn btn-danger w-100">Record Mortality</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stock Batch Modal -->
+<div class="modal fade" id="stockBatchModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Stock New Fish Batch</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <form action="{{ url_for('stock_fish_batch') }}" method="POST">
+                    <div class="mb-3"><label>Batch Name</label><input type="text" name="batch_name" class="form-control" placeholder="e.g. Batch A - Jan" required></div>
+                    <div class="mb-3">
+                        <label>Select Pond</label>
+                        <select name="pond_id" class="form-select" required>
+                            {% for pond in ponds %}
+                                {% if pond.status != 'Stocked' %}
+                                <option value="{{ pond.id }}">{{ pond.name }} ({{ pond.type }})</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label>Quantity (Fingerlings)</label><input type="number" name="quantity" class="form-control" required></div>
+                        <div class="col-6 mb-3"><label>Avg Weight (g)</label><input type="number" step="0.1" name="avg_weight" class="form-control"></div>
+                    </div>
+                    <div class="mb-3"><label>Total Cost of Stock (₦)</label><input type="number" step="0.01" name="total_cost" class="form-control" required></div>
+                    <div class="mb-3"><label>Stocking Date</label><input type="date" name="stocking_date" class="form-control" value="{{ today_date }}" required></div>
+                    <div class="mb-3">
+                        <label>Payment Source</label>
+                        <select name="payment_account_id" class="form-select" required>
+                            {% for acc in asset_accounts %}
+                            <option value="{{ acc.id }}">{{ acc.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Stock Pond</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Pond Modal -->
+<div class="modal fade" id="addPondModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Create New Pond</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <form action="{{ url_for('add_pond') }}" method="POST">
+                    <div class="mb-3"><label>Pond Name</label><input type="text" name="name" class="form-control" required></div>
+                    <div class="mb-3"><label>Type</label>
+                        <select name="type" class="form-select">
+                            <option>Concrete Tank</option>
+                            <option>Earthen Pond</option>
+                            <option>Tarpaulin/Mobile</option>
+                            <option>Plastic Tank</option>
+                        </select>
+                    </div>
+                    <div class="mb-3"><label>Capacity (Liters/Size)</label><input type="number" name="capacity" class="form-control"></div>
+                    <button type="submit" class="btn btn-primary w-100">Create Pond</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Harvest Modal -->
+<div class="modal fade" id="harvestModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Harvest & Close Batch</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="alert alert-warning">This will calculate final profit and clear the pond.</div>
+                <form action="{{ url_for('harvest_fish_batch') }}" method="POST">
+                    <input type="hidden" name="batch_id" id="harvest_batch_id">
+                    <div class="mb-3"><label>Harvest Date</label><input type="date" name="harvest_date" class="form-control" value="{{ today_date }}" required></div>
+                    <div class="mb-3"><label>Total Harvest Weight (Kg)</label><input type="number" step="0.1" name="total_weight_kg" class="form-control" required></div>
+                    <div class="mb-3"><label>Total Sales Amount (₦)</label><input type="number" step="0.01" name="total_sale_amount" class="form-control" required></div>
+                    <button type="submit" class="btn btn-success w-100">Complete Harvest</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    function openLogModal(id, name) {
+        document.getElementById('feed_batch_id').value = id;
+        document.getElementById('mort_batch_id').value = id;
+        new bootstrap.Modal(document.getElementById('logModal')).show();
+    }
+    function openHarvestModal(id, name) {
+        document.getElementById('harvest_batch_id').value = id;
+        new bootstrap.Modal(document.getElementById('harvestModal')).show();
+    }
+</script>
+{% endblock %}

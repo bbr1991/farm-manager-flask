@@ -4417,7 +4417,430 @@ def phone_charging_bulk_add_cards():
         db.rollback()
         flash(f"Error during bulk card addition: {e}", 'danger')
     return redirect(url_for('phone_charging_dashboard'))
+# ==============================================================================
+# FISHERY / CATFISH MODULE ROUTES
+# ==============================================================================
 
+@app.route('/fishery')
+@login_required
+@permission_required('view_fishery_dashboard')
+def fishery_dashboard():
+    db = get_db()
+    
+    # Get Active Batches with Calculations
+    active_batches = db.execute("""
+        SELECT 
+            fb.*, fp.name as pond_name,
+            (SELECT COALESCE(SUM(cost_of_activity), 0) FROM fish_log WHERE batch_id = fb.id) as operational_cost,
+            (SELECT COALESCE(SUM(quantity_used), 0) FROM fish_log WHERE batch_id = fb.id AND activity_type = 'Feeding') as total_feed_kg
+        FROM fish_batches fb
+        JOIN fish_ponds fp ON fb.pond_id = fp.id
+        WHERE fb.status = 'Active'
+    """).fetchall()
+    
+    processed_batches = []
+    for row in active_batches:
+        b = dict(row)
+        total_cost = (b['initial_cost'] or 0) + (b['operational_cost'] or 0)
+        b['total_cost'] = total_cost
+        # Estimate Cost Per Fish currently
+        b['current_cost_per_fish'] = total_cost / b['current_quantity'] if b['current_quantity'] > 0 else 0
+        processed_batches.append(b)
+
+    ponds = db.execute("SELECT * FROM fish_ponds").fetchall()
+    
+    # Dropdowns for forms
+    feed_items = db.execute("SELECT * FROM inventory WHERE category = 'Feed' AND quantity > 0").fetchall()
+    asset_accounts = db.execute("SELECT * FROM accounts WHERE type = 'Asset'").fetchall()
+
+    return render_template(
+        'fishery.html',
+        user=g.user,
+        active_batches=processed_batches,
+        ponds=ponds,
+        feed_items=feed_items,
+        asset_accounts=asset_accounts,
+        today_date=date.today().strftime('%Y-%m-%d')
+    )
+
+@app.route('/fishery/pond/add', methods=['POST'])
+@login_required
+@permission_required('manage_fishery')
+def add_pond():
+    db = get_db()
+    try:
+        name = request.form.get('name')
+        p_type = request.form.get('type')
+        capacity = request.form.get('capacity')
+        
+        db.execute("INSERT INTO fish_ponds (name, type, capacity_liters) VALUES (?, ?, ?)", 
+                   (name, p_type, capacity))
+        db.commit()
+        flash("New Pond added successfully.", "success")
+    except Exception as e:
+        flash(f"Error: {e}", "danger")
+    return redirect(url_for('fishery_dashboard'))
+
+@app.route('/fishery/batch/stock', methods=['POST'])
+@login_required
+@permission_required('manage_fishery')
+@check_day_closed('stocking_date')
+def stock_fish_batch():
+    db = get_db()
+    try:
+        name = request.form.get('batch_name')
+        pond_id = request.form.get('pond_id')
+        qty = int(request.form.get('quantity'))
+        cost = float(request.form.get('total_cost'))
+        weight = request.form.get('avg_weight')
+        s_date = request.form.get('stocking_date')
+        payment_acc = request.form.get('payment_account_id')
+
+        # Create Batch
+        cursor = db.cursor()
+        cursor.execute("""
+            INSERT INTO fish_batches (batch_name, pond_id, stocking_date, initial_quantity, current_quantity, initial_avg_weight_g, initial_cost)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (name, pond_id, s_date, qty, qty, weight, cost))
+        new_id = cursor.lastrowid
+        
+        # Update Pond Status
+        db.execute("UPDATE fish_ponds SET status = 'Stocked' WHERE id = ?", (pond_id,))
+
+        # Financial Entry (Asset: Inventory - Fish Stock)
+        fish_asset_id = get_account_id('Inventory - Fish Stock', 'Asset', True)
+        
+        db.execute("""
+            INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (s_date, f"Stocking Fingerlings: {name}", fish_asset_id, payment_acc, cost, g.user.id))
+
+        db.commit()
+        flash(f"Batch '{name}' stocked successfully!", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"Error: {e}", "danger")
+    return redirect(url_for('fishery_dashboard'))
+
+@app.route('/fishery/log/feed', methods=['POST'])
+@login_required
+@permission_required('manage_fishery')
+@check_day_closed('log_date')
+def log_fish_feed():
+    db = get_db()
+    try:
+        batch_id = request.form.get('batch_id')
+        feed_id = request.form.get('feed_item_id') # Inventory ID
+        qty = float(request.form.get('quantity_kg'))
+        log_date = request.form.get('log_date')
+        
+        # Get Cost
+        item = db.execute("SELECT unit_cost, name, quantity FROM inventory WHERE id = ?", (feed_id,)).fetchone()
+        if item['quantity'] < qty:
+            flash(f"Not enough feed inventory. Only {item['quantity']} available.", "danger")
+            return redirect(url_for('fishery_dashboard'))
+            
+        cost = qty * item['unit_cost']
+        
+        # 1. Reduce Inventory
+        db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (qty, feed_id))
+        
+        # 2. Add to Fish Log
+        db.execute("""
+            INSERT INTO fish_log (log_date, batch_id, activity_type, inventory_item_id, quantity_used, cost_of_activity)
+            VALUES (?, ?, 'Feeding', ?, ?, ?)
+        """, (log_date, batch_id, feed_id, qty, cost))
+        
+        # 3. Journal Entry (Expense)
+        feed_expense_id = get_account_id('Fish Feed Expense', 'Expense', True)
+        inv_asset_id = get_account_id('Inventory - Feed', 'Asset', False)
+        
+        db.execute("""
+            INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (log_date, f"Fish Feeding - Batch {batch_id}", feed_expense_id, inv_asset_id, cost, g.user.id))
+        
+        db.commit()
+        flash("Feeding logged successfully.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"Error: {e}", "danger")
+    return redirect(url_for('fishery_dashboard'))
+
+@app.route('/fishery/log/mortality', methods=['POST'])
+@login_required
+@permission_required('manage_fishery')
+@check_day_closed('log_date')
+def log_fish_mortality():
+    db = get_db()
+    try:
+        batch_id = request.form.get('batch_id')
+        count = int(request.form.get('mortality_count'))
+        log_date = request.form.get('log_date')
+        
+        # Update Log
+        db.execute("""
+            INSERT INTO fish_log (log_date, batch_id, activity_type, mortality_count, cost_of_activity)
+            VALUES (?, ?, 'Mortality', ?, 0)
+        """, (log_date, batch_id, count))
+        
+        # Update Batch Count
+        db.execute("UPDATE fish_batches SET current_quantity = current_quantity - ? WHERE id = ?", (count, batch_id))
+        
+        db.commit()
+        flash(f"Recorded {count} mortality.", "warning")
+    except Exception as e:
+        db.rollback()
+        flash(f"Error: {e}", "danger")
+    return redirect(url_for('fishery_dashboard'))
+
+@app.route('/fishery/harvest', methods=['POST'])
+@login_required
+@permission_required('manage_fishery')
+def harvest_fish_batch():
+    db = get_db()
+    try:
+        batch_id = request.form.get('batch_id')
+        harvest_date = request.form.get('harvest_date')
+        total_kg = float(request.form.get('total_weight_kg'))
+        sale_price = float(request.form.get('total_sale_amount'))
+        
+        # 1. Calculate Costs
+        batch = db.execute("SELECT initial_cost FROM fish_batches WHERE id = ?", (batch_id,)).fetchone()
+        ops_cost = db.execute("SELECT COALESCE(SUM(cost_of_activity), 0) FROM fish_log WHERE batch_id = ?", (batch_id,)).fetchone()[0]
+        
+        total_expenses = batch['initial_cost'] + ops_cost
+        net_profit = sale_price - total_expenses
+        
+        # Cost Per Kg Calculation (Crucial for Fish Farming)
+        cost_per_kg = total_expenses / total_kg if total_kg > 0 else 0
+        
+        # 2. Update Batch
+        db.execute("""
+            UPDATE fish_batches SET 
+                status = 'Harvested',
+                harvest_date = ?,
+                total_harvest_weight_kg = ?,
+                total_sales_amount = ?,
+                total_expenses = ?,
+                net_profit = ?,
+                cost_per_kg = ?
+            WHERE id = ?
+        """, (harvest_date, total_kg, sale_price, total_expenses, net_profit, cost_per_kg, batch_id))
+        
+        # 3. Free up Pond
+        pond_id = db.execute("SELECT pond_id FROM fish_batches WHERE id = ?", (batch_id,)).fetchone()[0]
+        db.execute("UPDATE fish_ponds SET status = 'Empty' WHERE id = ?", (pond_id,))
+        
+        # 4. Financials (Revenue)
+        rev_acc_id = get_account_id('Fish Sales Income', 'Revenue', True)
+        cash_acc_id = g.user.cash_account_id or get_account_id('Cash on Hand', 'Asset')
+        
+        # Record Revenue
+        db.execute("""
+            INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (harvest_date, f"Fish Harvest Sales - Batch {batch_id}", cash_acc_id, rev_acc_id, sale_price, g.user.id))
+        
+        # Record Expense recognition (Moving Asset to COGS) - Optional depending on your accounting style, 
+        # but here we just leave the expenses where they were logged (Feed Expense, etc.) and recognize the profit.
+
+        db.commit()
+        flash(f"Harvest Complete! Profit: ₦{net_profit:,.2f}. Production Cost: ₦{cost_per_kg:,.2f}/kg", "success")
+
+    except Exception as e:
+        db.rollback()
+        flash(f"Error: {e}", "danger")
+    return redirect(url_for('fishery_dashboard'))
+# ==============================================================================
+# FISHERY FEED FORMULATOR ROUTE
+# ==============================================================================
+
+@app.route('/fishery/feed/formulate', methods=['GET', 'POST'])
+@login_required
+@permission_required('manage_fishery')
+def fishery_feed_formulator():
+    db = get_db()
+
+    if request.method == 'POST':
+        # Save the formula
+        formula_name = request.form.get('formula_name')
+        total_weight = float(request.form.get('total_weight', 0))
+        final_cp = float(request.form.get('final_cp', 0))
+        final_cost_kg = float(request.form.get('final_cost_per_kg', 0))
+        ingredients_json = request.form.get('ingredients_json')
+
+        # We reuse the existing feed_formulas table
+        db.execute("""
+            INSERT INTO feed_formulas (name, batch_size_kg, final_cp_percent, final_me_value, cost_per_kg, ingredients_json)
+            VALUES (?, ?, ?, 0, ?, ?)
+        """, (formula_name, total_weight, final_cp, final_cost_kg, ingredients_json))
+        
+        db.commit()
+        flash(f"Catfish Feed Formula '{formula_name}' saved!", "success")
+        return redirect(url_for('fishery_feed_formulator'))
+
+    # GET Request: Fetch Fish Specific Ingredients
+    # We prioritize ingredients marked as 'Fish', but allow General ones too if needed
+    ingredients = db.execute("""
+        SELECT * FROM feed_ingredients 
+        WHERE category = 'Fish' OR category = 'General' 
+        ORDER BY category DESC, name ASC
+    """).fetchall()
+
+    saved_formulas = db.execute("SELECT * FROM feed_formulas ORDER BY id DESC LIMIT 10").fetchall()
+
+    return render_template(
+        'fishery_feed_formulator.html', 
+        user=g.user, 
+        ingredients=ingredients, 
+        saved_formulas=saved_formulas
+    )
+# ==============================================================================
+# FISHERY VET ROUTES
+# ==============================================================================
+
+@app.route('/fishery/vet')
+@login_required
+@permission_required('view_fishery_dashboard') # Or create a 'view_fishery_vet' permission
+def fishery_vet_dashboard():
+    db = get_db()
+    # Only fetch symptoms categorized as 'Fish' (or NULL/General if you prefer)
+    symptoms = db.execute("SELECT * FROM vet_symptoms WHERE category = 'Fish' ORDER BY name").fetchall()
+    return render_template('fishery_vet.html', user=g.user, symptoms=symptoms)
+
+@app.route('/fishery/vet/diagnose', methods=['POST'])
+@login_required
+def fishery_vet_diagnose():
+    db = get_db()
+    selected_symptom_ids = request.form.getlist('symptoms')
+    
+    # Fetch symptoms again for re-render
+    all_symptoms = db.execute("SELECT * FROM vet_symptoms WHERE category = 'Fish' ORDER BY name").fetchall()
+
+    if not selected_symptom_ids:
+        flash("Please select at least one symptom.", "warning")
+        return render_template('fishery_vet.html', user=g.user, symptoms=all_symptoms)
+
+    # Dynamic Matching Logic (Same as Poultry, but data is different)
+    placeholders = ','.join('?' for _ in selected_symptom_ids)
+    
+    query = f"""
+        SELECT 
+            d.name, 
+            d.description, 
+            d.treatment_plan, 
+            d.prevention_plan,
+            COUNT(ds.symptom_id) as match_count,
+            (SELECT COUNT(*) FROM vet_disease_symptoms WHERE disease_id = d.id) as total_symptoms_for_disease
+        FROM vet_diseases d
+        JOIN vet_disease_symptoms ds ON d.id = ds.disease_id
+        WHERE ds.symptom_id IN ({placeholders}) AND d.category = 'Fish'
+        GROUP BY d.id
+        ORDER BY match_count DESC
+    """
+    
+    raw_results = db.execute(query, selected_symptom_ids).fetchall()
+    
+    diagnosis_results = []
+    for row in raw_results:
+        res = dict(row)
+        if res['total_symptoms_for_disease'] > 0:
+            prob = (res['match_count'] / res['total_symptoms_for_disease']) * 100
+        else:
+            prob = 0
+        res['probability'] = round(prob)
+        diagnosis_results.append(res)
+
+    diagnosis_results.sort(key=lambda x: x['probability'], reverse=True)
+
+    return render_template(
+        'fishery_vet.html', 
+        user=g.user, 
+        symptoms=all_symptoms, 
+        diagnosis_results=diagnosis_results,
+        selected_ids=selected_symptom_ids
+    )
+@app.route('/report/fishery')
+@login_required
+@permission_required('run_operational_reports')
+def report_fishery():
+    db = get_db()
+    start_date, end_date = _get_report_dates(request.args)
+    
+    # 1. FEED CONSUMPTION REPORT (From Operational Log)
+    feed_logs = db.execute("""
+        SELECT 
+            fl.log_date,
+            fb.batch_name,
+            i.name as feed_name,
+            fl.quantity_used,
+            fl.cost_of_activity
+        FROM fish_log fl
+        JOIN fish_batches fb ON fl.batch_id = fb.id
+        JOIN inventory i ON fl.inventory_item_id = i.id
+        WHERE fl.activity_type = 'Feeding' 
+        AND fl.log_date BETWEEN ? AND ?
+        ORDER BY fl.log_date DESC
+    """, (start_date, end_date)).fetchall()
+
+    total_feed_kg = sum(row['quantity_used'] for row in feed_logs)
+    total_feed_cost = sum(row['cost_of_activity'] for row in feed_logs)
+
+    # 2. GENERAL FISHERY EXPENSES (From Journal - e.g. Stocking, Meds, Labor)
+    # We look for expenses where the Account Name starts with "Fish" or "Fishery"
+    general_expenses = db.execute("""
+        SELECT 
+            je.transaction_date,
+            acc.name as category,
+            je.description,
+            je.amount
+        FROM journal_entries je
+        JOIN accounts acc ON je.debit_account_id = acc.id
+        WHERE acc.type = 'Expense' 
+        AND (acc.name LIKE 'Fish%' OR acc.name LIKE 'Fishery%')
+        AND je.transaction_date BETWEEN ? AND ?
+        ORDER BY je.transaction_date DESC
+    """, (start_date, end_date)).fetchall()
+
+    total_general_expenses = sum(row['amount'] for row in general_expenses)
+    
+    # 3. STOCKING COSTS (Investments made in this period)
+    stocking_data = db.execute("""
+        SELECT batch_name, stocking_date, initial_quantity, initial_cost 
+        FROM fish_batches 
+        WHERE stocking_date BETWEEN ? AND ?
+    """, (start_date, end_date)).fetchall()
+    
+    total_stocking_cost = sum(row['initial_cost'] for row in stocking_data)
+
+    # 4. HARVEST INCOME (Sales in this period)
+    harvest_data = db.execute("""
+        SELECT batch_name, harvest_date, total_harvest_weight_kg, total_sales_amount 
+        FROM fish_batches 
+        WHERE status = 'Harvested' AND harvest_date BETWEEN ? AND ?
+    """, (start_date, end_date)).fetchall()
+    
+    total_sales = sum(row['total_sales_amount'] for row in harvest_data)
+
+    # Summary Data
+    grand_total_expenses = total_feed_cost + total_general_expenses # Note: Stocking is usually an Asset purchase, but if you want it as cashflow out, add it here.
+    
+    return render_template(
+        'report_fishery.html',
+        user=g.user,
+        start_date=start_date,
+        end_date=end_date,
+        feed_logs=feed_logs,
+        total_feed_kg=total_feed_kg,
+        total_feed_cost=total_feed_cost,
+        general_expenses=general_expenses,
+        stocking_data=stocking_data,
+        harvest_data=harvest_data,
+        total_sales=total_sales,
+        grand_total_expenses=grand_total_expenses,
+        now=datetime.utcnow()
+    )
 # ==============================================================================
 # 17. ERROR HANDLERS & MAIN EXECUTION
 # ==============================================================================

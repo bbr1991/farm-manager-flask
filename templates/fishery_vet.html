@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Fish Vet Assistant{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Fish Vet Assistant <span class="badge bg-info text-dark">Catfish Edition</span></h1>
+    <a href="{{ url_for('fishery_dashboard') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Fishery
+    </a>
+</div>
+
+<div class="row">
+    <!-- SYMPTOM CHECKER -->
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-search"></i> Symptom Checker</h5>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">Select all signs you see in your pond:</p>
+                <form action="{{ url_for('fishery_vet_diagnose') }}" method="POST">
+                    <div class="list-group mb-3" style="max-height: 400px; overflow-y: auto;">
+                        {% for sym in symptoms %}
+                        <label class="list-group-item">
+                            <input class="form-check-input me-1" type="checkbox" name="symptoms" value="{{ sym.id }}"
+                            {% if selected_ids and sym.id|string in selected_ids %}checked{% endif %}>
+                            {{ sym.name }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Diagnose Problem</button>
+                    <a href="{{ url_for('fishery_vet_dashboard') }}" class="btn btn-outline-secondary w-100 mt-2">Clear</a>
+                </form>
+            </div>
+        </div>
+        
+        <!-- WATER QUALITY REMINDER -->
+        <div class="card shadow mt-4 border-left-warning">
+            <div class="card-body">
+                <h6 class="font-weight-bold text-warning">Wait! Check Water First</h6>
+                <p class="small mb-0">80% of fish issues are caused by bad water. Before treating with drugs, check:</p>
+                <ul class="small mt-2">
+                    <li><strong>Smell:</strong> Foul smell = Ammonia/Rotting feed.</li>
+                    <li><strong>Color:</strong> Too dark/Black = Pollution.</li>
+                    <li><strong>pH:</strong> Should be 6.5 - 8.5.</li>
+                </ul>
+                <div class="alert alert-warning p-1 mt-2 text-center small">
+                    <strong>Solution:</strong> Perform a 50% water change immediately if unsure.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DIAGNOSIS RESULTS -->
+    <div class="col-lg-8">
+        {% if diagnosis_results %}
+            <h4 class="mb-3">Diagnosis Results</h4>
+            {% for result in diagnosis_results %}
+            <div class="card shadow mb-3 {% if result.probability > 75 %}border-danger{% elif result.probability > 50 %}border-warning{% endif %}">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-dark font-weight-bold">{{ result.name }}</h5>
+                    <span class="badge {% if result.probability > 75 %}bg-danger{% elif result.probability > 50 %}bg-warning text-dark{% else %}bg-secondary{% endif %} p-2">
+                        {{ result.probability }}% Match
+                    </span>
+                </div>
+                <div class="card-body">
+                    <p><strong>Description:</strong> {{ result.description }}</p>
+                    
+                    <div class="alert alert-info">
+                        <strong><i class="bi bi-bandaid-fill"></i> Treatment:</strong> {{ result.treatment_plan }}
+                    </div>
+                    
+                    <div class="alert alert-success">
+                        <strong><i class="bi bi-shield-check"></i> Prevention:</strong> {{ result.prevention_plan }}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="text-center py-5 text-muted">
+                <i class="bi bi-heart-pulse" style="font-size: 4rem;"></i>
+                <h4 class="mt-3">Dr. Fish is Ready</h4>
+                <p>Select symptoms on the left to get a diagnosis, treatment, and prevention plan.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

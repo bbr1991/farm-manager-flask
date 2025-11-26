@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Fish Farming Report{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Fish Farming Performance Report</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <form class="d-flex align-items-center gap-2" method="GET">
+            <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+            <span class="text-muted">to</span>
+            <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+            <button type="submit" class="btn btn-primary">Filter</button>
+        </form>
+        <button onclick="window.print()" class="btn btn-outline-secondary ms-2 no-print">
+            <i class="bi bi-printer"></i> Print
+        </button>
+    </div>
+</div>
+
+<!-- KPI CARDS -->
+<div class="row mb-4 text-center">
+    <div class="col-md-3">
+        <div class="card shadow border-left-primary py-2">
+            <div class="card-body">
+                <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Feed Consumed</div>
+                <div class="h5 mb-0 font-weight-bold text-gray-800">{{ "{:,.1f}".format(total_feed_kg) }} kg</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow border-left-warning py-2">
+            <div class="card-body">
+                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Total Feed Cost</div>
+                <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ "{:,.2f}".format(total_feed_cost) }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow border-left-danger py-2">
+            <div class="card-body">
+                <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Other Expenses</div>
+                <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ "{:,.2f}".format(grand_total_expenses) }}</div>
+                <small>(Meds, Labor, etc)</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow border-left-success py-2">
+            <div class="card-body">
+                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Sales</div>
+                <div class="h5 mb-0 font-weight-bold text-gray-800">₦{{ "{:,.2f}".format(total_sales) }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- FEED CONSUMPTION TABLE -->
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-light">
+        <h6 class="m-0 font-weight-bold text-primary"><i class="bi bi-basket-fill"></i> Feed Consumption Log</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Batch</th>
+                        <th>Feed Type</th>
+                        <th>Quantity (Kg)</th>
+                        <th>Cost (₦)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in feed_logs %}
+                    <tr>
+                        <td>{{ log.log_date }}</td>
+                        <td>{{ log.batch_name }}</td>
+                        <td>{{ log.feed_name }}</td>
+                        <td>{{ log.quantity_used }}</td>
+                        <td>{{ "{:,.2f}".format(log.cost_of_activity) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center text-muted">No feeding records found for this period.</td></tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td colspan="3" class="text-end">TOTAL:</td>
+                        <td>{{ "{:,.1f}".format(total_feed_kg) }} kg</td>
+                        <td>₦{{ "{:,.2f}".format(total_feed_cost) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- GENERAL EXPENSES TABLE -->
+    <div class="col-md-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-light">
+                <h6 class="m-0 font-weight-bold text-danger"><i class="bi bi-cash-coin"></i> Other Operational Expenses</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Category</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for exp in general_expenses %}
+                        <tr>
+                            <td>{{ exp.transaction_date }}</td>
+                            <td>{{ exp.category }}</td>
+                            <td>{{ exp.description }}</td>
+                            <td>{{ "{:,.2f}".format(exp.amount) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- HARVEST/SALES TABLE -->
+    <div class="col-md-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-light">
+                <h6 class="m-0 font-weight-bold text-success"><i class="bi bi-graph-up-arrow"></i> Harvests & Sales</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Batch</th>
+                            <th>Weight (Kg)</th>
+                            <th>Revenue (₦)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for h in harvest_data %}
+                        <tr>
+                            <td>{{ h.harvest_date }}</td>
+                            <td>{{ h.batch_name }}</td>
+                            <td>{{ h.total_harvest_weight_kg }}</td>
+                            <td>{{ "{:,.2f}".format(h.total_sales_amount) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="text-center text-muted mt-4">
+    <small>Report generated on {{ now.strftime('%Y-%m-%d %H:%M:%S') }}</small>
+</div>
+{% endblock %}
