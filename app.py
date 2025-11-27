@@ -2919,83 +2919,69 @@ def add_egg_log():
         pieces = int(request.form.get('pieces', 0) or 0)
         spoiled_count = int(request.form.get('spoiled_count', 0) or 0)
 
-        # --- Get Current State of Eggs Inventory ---
-        eggs_item = db.execute("SELECT id, quantity, unit_cost FROM inventory WHERE name = 'Eggs'").fetchone()
-        if not eggs_item:
-            raise Exception("CRITICAL: Inventory item 'Eggs' not found. Please create it first (Category: Produce, Unit: Piece).")
-        
-        current_egg_quantity = eggs_item['quantity'] or 0
-        current_egg_unit_cost = eggs_item['unit_cost'] or 0
-        current_total_value = current_egg_quantity * current_egg_unit_cost
-
-        # --- Get the feed item to calculate the cost of today's production ---
+        # 1. Get Feed Cost Info
         feed_item = db.execute("SELECT unit_cost, quantity, name FROM inventory WHERE id = ?", (feed_item_id,)).fetchone()
         if not feed_item: raise Exception("Feed item not found.")
-        if feed_quantity_used > feed_item['quantity']: raise Exception(f"Not enough {feed_item['name']} in stock. Only {feed_item['quantity']} available.")
         
+        # Calculate cost of feed used
         cost_of_feed_today = feed_quantity_used * (feed_item['unit_cost'] or 0)
         
-        # --- Calculations ---
+        # 2. Get Egg Info
+        eggs_item = db.execute("SELECT id, quantity, unit_cost FROM inventory WHERE name = 'Eggs'").fetchone()
+        if not eggs_item: raise Exception("Inventory item 'Eggs' not found.")
+        
+        current_egg_qty = eggs_item['quantity'] or 0
+        current_egg_value = current_egg_qty * (eggs_item['unit_cost'] or 0)
+
+        # 3. Calculate Quantity Produced
         EGGS_PER_CRATE = 30
-        total_eggs_laid = (crates * EGGS_PER_CRATE) + pieces
-        good_eggs_produced_today = total_eggs_laid - spoiled_count
+        total_laid = (crates * EGGS_PER_CRATE) + pieces
+        good_eggs = total_laid - spoiled_count
         
-        if good_eggs_produced_today < 0:
-            raise Exception("Spoiled count cannot be greater than total eggs laid.")
-            
-        # --- THE AVERAGE COST CALCULATION ---
-        new_total_value = current_total_value + cost_of_feed_today
-        new_total_quantity = current_egg_quantity + good_eggs_produced_today
-        new_average_unit_cost = new_total_value / new_total_quantity if new_total_quantity > 0 else 0
+        if good_eggs <= 0: raise Exception("No good eggs produced.")
 
-        # --- Get Account IDs (using centralized helper function) ---
-        feed_inventory_acc_id = get_account_id('Inventory - Feed', acc_type='Asset', create_if_not_found=False)
-        egg_inventory_acc_id = get_account_id('Inventory - Eggs', acc_type='Asset', create_if_not_found=False)
-        poultry_feed_expense_id = get_account_id('Poultry Feed Expense', acc_type='Expense')
-        poultry_production_income_id = get_account_id('Poultry Production Income', acc_type='Revenue') 
+        # 4. WEIGHTED AVERAGE COST (The Golden Rule)
+        # New Value = Old Value + Cost of Feed Used
+        # New Qty = Old Qty + Good Eggs Produced
+        new_total_value = current_egg_value + cost_of_feed_today
+        new_total_qty = current_egg_qty + good_eggs
+        new_unit_cost = new_total_value / new_total_qty if new_total_qty > 0 else 0
 
-        # --- DATABASE TRANSACTION ---
+        # 5. DATABASE UPDATES
         
-        # 1. Update the operational log for egg production
-        db.execute("""
-            INSERT INTO egg_log (log_date, flock_id, crates, pieces, quantity, spoiled_count, feed_cost)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (log_date, flock_id, crates, pieces, good_eggs_produced_today, spoiled_count, cost_of_feed_today))
+        # A. Log the operational data
+        db.execute("INSERT INTO egg_log (log_date, flock_id, quantity, spoiled_count, feed_cost) VALUES (?, ?, ?, ?, ?)",
+                   (log_date, flock_id, good_eggs, spoiled_count, cost_of_feed_today))
 
-        # 2. Decrease feed stock
+        # B. Reduce Feed Inventory
         db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (feed_quantity_used, feed_item_id))
         
-        # 3. CRITICAL UPDATE: Update "Eggs" item with new quantity AND new average unit cost
-        db.execute("UPDATE inventory SET quantity = ?, unit_cost = ? WHERE id = ?", 
-                   (new_total_quantity, new_average_unit_cost, eggs_item['id']))
+        # C. Increase Egg Inventory (With new Average Cost)
+        db.execute("UPDATE inventory SET quantity = ?, unit_cost = ? WHERE id = ?", (new_total_qty, new_unit_cost, eggs_item['id']))
 
-        # 4. Create journal entry for feed consumption (moving asset to expense)
-        description_feed = f"Feed consumption for egg production for flock {flock_id} on {log_date}"
-        db.execute("""
-            INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_flock_id) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (log_date, description_feed, poultry_feed_expense_id, feed_inventory_acc_id, cost_of_feed_today, g.user.id, flock_id))
+        # 6. JOURNAL ENTRY (Asset Swap)
+        # Credit: Inventory - Feed (Value goes down)
+        # Debit: Inventory - Eggs (Value goes up)
+        # NO INCOME IS RECORDED HERE.
         
-        # 5. NEW: Create journal entry for the VALUE of the eggs produced (Asset increase, Revenue increase)
-        if good_eggs_produced_today > 0 and new_average_unit_cost > 0:
-            value_of_new_eggs = good_eggs_produced_today * new_average_unit_cost
-            description_eggs_prod = f"Egg production (good eggs) added to inventory for flock {flock_id} on {log_date}"
-            db.execute("""
-                INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_flock_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (log_date, description_eggs_prod, egg_inventory_acc_id, poultry_production_income_id, value_of_new_eggs, g.user.id, flock_id))
+        feed_asset_id = get_account_id('Inventory - Feed', 'Asset')
+        egg_asset_id = get_account_id('Inventory - Eggs', 'Asset')
+        
+        description = f"Egg Production (Feed Transformation) - Flock {flock_id}"
+        
+        db.execute("""
+            INSERT INTO journal_entries (transaction_date, description, debit_account_id, credit_account_id, amount, created_by_user_id, related_flock_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (log_date, description, egg_asset_id, feed_asset_id, cost_of_feed_today, g.user.id, flock_id))
 
         db.commit()
-        flash(f"Production logged. New average cost for eggs is now ₦{new_average_unit_cost:,.2f} per piece.", "success")
+        flash(f"Logged {good_eggs} eggs. Cost of ₦{cost_of_feed_today:,.2f} transferred from Feed to Egg Inventory.", "success")
 
     except Exception as e:
         db.rollback()
-        flash(f"An error occurred: {e}", "danger")
+        flash(f"Error: {e}", "danger")
         
     return redirect(url_for('poultry_dashboard'))
-
 @app.route('/poultry/flock/add', methods=['POST'])
 @login_required
 @check_day_closed('date')
