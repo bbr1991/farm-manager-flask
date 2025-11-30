@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Feed Ingredients & Prices{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Manage Feed Prices</h1>
+    <div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addIngredientModal">
+            <i class="bi bi-plus-circle"></i> Add New Ingredient
+        </button>
+        <a href="{{ url_for('fishery_feed_formulator') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Calculator
+        </a>
+    </div>
+</div>
+
+<div class="card shadow">
+    <div class="card-header py-3 bg-light">
+        <h6 class="m-0 font-weight-bold text-primary">Current Market Prices</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Category</th>
+                        <th>Ingredient Name</th>
+                        <th>Protein (CP%)</th>
+                        <th style="width: 250px;">Current Price (₦/Kg)</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in ingredients %}
+                    <tr>
+                        <td>
+                            {% if item.category == 'Fish' %}
+                                <span class="badge bg-info text-dark">Fish</span>
+                            {% else %}
+                                <span class="badge bg-secondary">General</span>
+                            {% endif %}
+                        </td>
+                        <td class="fw-bold">{{ item.name }}</td>
+                        <td>{{ item.cp_percent }}%</td>
+                        <td>
+                            <!-- Inline Update Form -->
+                            <form action="{{ url_for('update_ingredient_price') }}" method="POST" class="d-flex gap-2">
+                                <input type="hidden" name="ingredient_id" value="{{ item.id }}">
+                                <input type="number" step="0.01" name="price_per_kg" class="form-control form-control-sm" value="{{ item.price_per_kg }}">
+                                <button type="submit" class="btn btn-sm btn-success">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                            </form>
+                        </td>
+                        <td>
+                            <small class="text-muted">Last updated recently</small>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Ingredient Modal -->
+<div class="modal fade" id="addIngredientModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('add_new_ingredient') }}" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Ingredient</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label>Ingredient Name</label>
+                        <input type="text" name="name" class="form-control" placeholder="e.g. Biscuit Waste" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label>Protein (CP %)</label>
+                            <input type="number" step="0.1" name="cp_percent" class="form-control" required>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label>Price per Kg (₦)</label>
+                            <input type="number" step="0.01" name="price_per_kg" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label>Category</label>
+                        <select name="category" class="form-select">
+                            <option value="Fish">Fish Specific</option>
+                            <option value="General">General / Poultry</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Save Ingredient</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

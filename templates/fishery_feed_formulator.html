@@ -3,11 +3,19 @@
 {% block title %}Catfish Feed Formulator{% endblock %}
 
 {% block content %}
+<!-- HEADER SECTION -->
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">Catfish Feed Formulator</h1>
-    <a href="{{ url_for('fishery_dashboard') }}" class="btn btn-outline-secondary">
-        <i class="bi bi-arrow-left"></i> Back to Fishery
-    </a>
+    <div>
+        <!-- UPDATE PRICES BUTTON (This is the one you were missing) -->
+        <a href="{{ url_for('manage_feed_ingredients') }}" class="btn btn-primary">
+            <i class="bi bi-tag-fill"></i> Update Market Prices
+        </a>
+        
+        <a href="{{ url_for('fishery_dashboard') }}" class="btn btn-outline-secondary ms-2">
+            <i class="bi bi-arrow-left"></i> Back to Fishery
+        </a>
+    </div>
 </div>
 
 <div class="row">
@@ -15,14 +23,14 @@
     <div class="col-lg-8">
         <div class="card shadow mb-4">
             <div class="card-header py-3 bg-primary text-white">
-                <h6 class="m-0 font-weight-bold">Formulate Batch</h6>
+                <h6 class="m-0 font-weight-bold">1. Formulate Recipe</h6>
             </div>
             <div class="card-body">
                 
                 <!-- AUTO GENERATOR SECTION -->
                 <div class="row mb-4 p-3 bg-light border rounded">
                     <div class="col-md-5">
-                        <label class="fw-bold">Step 1: Select Feed Type</label>
+                        <label class="fw-bold">Auto-Fill Standard Recipe:</label>
                         <select id="auto_feed_type" class="form-select">
                             <option value="starter">Starter (42-45% CP)</option>
                             <option value="grower">Grower (30-35% CP)</option>
@@ -30,12 +38,12 @@
                         </select>
                     </div>
                     <div class="col-md-4">
-                        <label class="fw-bold">Step 2: Batch Size (Kg)</label>
-                        <input type="number" id="target_batch_size" class="form-control" value="100">
+                        <label class="fw-bold">Base Batch (Kg)</label>
+                        <input type="number" id="target_batch_size" class="form-control" value="100" oninput="generateStandardRation()">
                     </div>
                     <div class="col-md-3 d-flex align-items-end">
                         <button type="button" class="btn btn-info w-100" onclick="generateStandardRation()">
-                            <i class="bi bi-magic"></i> Generate
+                            <i class="bi bi-magic"></i> Auto-Fill
                         </button>
                     </div>
                 </div>
@@ -43,7 +51,7 @@
                 <form action="{{ url_for('fishery_feed_formulator') }}" method="POST" id="feedForm">
                     <div class="mb-3">
                         <label>Formula Name</label>
-                        <input type="text" name="formula_name" id="formula_name" class="form-control" placeholder="Generated Formula Name..." required>
+                        <input type="text" name="formula_name" id="formula_name" class="form-control" placeholder="e.g. My Secret Grower Mix" required>
                     </div>
 
                     <div class="table-responsive">
@@ -51,15 +59,15 @@
                             <thead class="table-light">
                                 <tr>
                                     <th width="40%">Ingredient</th>
-                                    <th width="15%">CP (%)</th>
+                                    <th width="10%">CP (%)</th>
                                     <th width="15%">Price/Kg</th>
                                     <th width="15%">Weight (Kg)</th>
-                                    <th width="15%">Total Cost</th>
+                                    <th width="20%">Cost (₦)</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Ingredients Rows (Pre-generated 8 rows) -->
-                                {% for i in range(8) %}
+                                <!-- Ingredients Rows (Pre-generated 10 rows) -->
+                                {% for i in range(10) %}
                                 <tr>
                                     <td>
                                         <select class="form-select ingredient-select" onchange="updateRow(this)">
@@ -80,12 +88,12 @@
                             </tbody>
                             <tfoot class="table-dark">
                                 <tr>
-                                    <td colspan="3" class="text-end"><strong>Totals:</strong></td>
+                                    <td colspan="3" class="text-end"><strong>Total Batch:</strong></td>
                                     <td><span id="total_weight_display">0</span> kg</td>
                                     <td>₦<span id="total_cost_display">0</span></td>
                                 </tr>
                                 <tr class="bg-success text-white">
-                                    <td colspan="3" class="text-end"><strong>Resulting Crude Protein (CP):</strong></td>
+                                    <td colspan="3" class="text-end"><strong>Crude Protein (CP):</strong></td>
                                     <td colspan="2"><h3><span id="final_cp_display">0</span>%</h3></td>
                                 </tr>
                                 <tr class="bg-info text-white">
@@ -103,38 +111,54 @@
                     <input type="hidden" name="ingredients_json" id="hidden_ingredients_json">
 
                     <button type="submit" class="btn btn-success w-100 mt-3" onclick="prepareSubmission()">
-                        <i class="bi bi-save"></i> Save Formula
+                        <i class="bi bi-save"></i> Save Formula to Database
                     </button>
                 </form>
             </div>
         </div>
     </div>
 
-    <!-- RIGHT COLUMN: Saved Formulas & Tips -->
+    <!-- RIGHT COLUMN -->
     <div class="col-lg-4">
-        <!-- Quick Tips Card -->
-        <div class="card shadow mb-4">
-            <div class="card-header py-3 bg-info text-white">
-                <h6 class="m-0 font-weight-bold">Catfish Nutritional Guide</h6>
+        
+        <!-- NEW SECTION: FEED MIXER / PRODUCTION INSTRUCTION -->
+        <div class="card shadow mb-4 border-left-warning">
+            <div class="card-header py-3 bg-warning">
+                <h6 class="m-0 font-weight-bold text-dark"><i class="bi bi-ui-checks"></i> 2. Production Mixer</h6>
             </div>
             <div class="card-body">
-                <ul class="list-group list-group-flush text-sm">
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Starter (Fingerlings)
-                        <span class="badge bg-primary rounded-pill">42-45% CP</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Grower (Juvenile+)
-                        <span class="badge bg-warning rounded-pill">30-35% CP</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Finisher (Adults)
-                        <span class="badge bg-success rounded-pill">28-30% CP</span>
-                    </li>
-                </ul>
-                <div class="alert alert-warning mt-3">
-                    <small><strong>Tip:</strong> Floating feed requires at least 5% Binder (Cassava Flour/Starch).</small>
+                <p class="small text-muted">Use this to tell workers what to weigh for specific production runs.</p>
+                
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="small fw-bold">Bag Size (Kg)</label>
+                        <input type="number" id="mixer_bag_size" class="form-control" value="25" oninput="updateMixer()">
+                    </div>
+                    <div class="col-6">
+                        <label class="small fw-bold">Quantity of Bags</label>
+                        <input type="number" id="mixer_bag_count" class="form-control" value="10" oninput="updateMixer()">
+                    </div>
                 </div>
+
+                <div class="alert alert-secondary text-center p-2">
+                    Total Production: <strong><span id="mixer_total_production">0</span> kg</strong>
+                </div>
+
+                <table class="table table-sm table-striped small">
+                    <thead>
+                        <tr>
+                            <th>Ingredient</th>
+                            <th class="text-end">Weigh (Kg)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mixer_table_body">
+                        <tr><td colspan="2" class="text-center text-muted">Formulate recipe first...</td></tr>
+                    </tbody>
+                </table>
+                
+                <button class="btn btn-outline-dark w-100 btn-sm" onclick="window.print()">
+                    <i class="bi bi-printer"></i> Print Instruction
+                </button>
             </div>
         </div>
 
@@ -204,27 +228,24 @@
         const totalKg = parseFloat(document.getElementById('target_batch_size').value) || 100;
         const recipe = recipes[type];
         
-        // Update Formula Name
         document.getElementById('formula_name').value = `Auto-Generated ${type.charAt(0).toUpperCase() + type.slice(1)} Feed`;
 
-        // Reset all rows first
+        // Reset rows
         document.querySelectorAll('#calcTable tbody tr').forEach(row => {
             row.querySelector('.ingredient-select').value = "";
             row.querySelector('.weight-input').value = "";
-            updateRow(row.querySelector('.ingredient-select')); // Reset values
+            updateRow(row.querySelector('.ingredient-select'));
         });
 
-        // Loop through recipe items and match with dropdowns
+        // Fill Data
         const rows = document.querySelectorAll('#calcTable tbody tr');
         let rowIndex = 0;
 
         for (const [ingredientName, ratio] of Object.entries(recipe)) {
             if (rowIndex >= rows.length) break;
-            
             const row = rows[rowIndex];
             const select = row.querySelector('.ingredient-select');
             
-            // Find the option text that matches the recipe ingredient name
             let foundOption = false;
             for (let i = 0; i < select.options.length; i++) {
                 if (select.options[i].text.includes(ingredientName)) {
@@ -235,11 +256,8 @@
             }
 
             if (foundOption) {
-                // Set quantity
                 const quantity = totalKg * ratio;
                 row.querySelector('.weight-input').value = quantity.toFixed(2);
-                
-                // Trigger updates
                 updateRow(select);
                 rowIndex++;
             }
@@ -250,7 +268,6 @@
     function updateRow(selectElement) {
         const row = selectElement.closest('tr');
         const option = selectElement.options[selectElement.selectedIndex];
-        
         row.querySelector('.cp-display').value = option.dataset.cp || 0;
         row.querySelector('.price-display').value = option.dataset.price || 0;
         recalculateTotals();
@@ -276,11 +293,10 @@
             totalProteinKg += rowProtein;
         });
 
-        // Update Totals
+        // Update Main Totals
         document.getElementById('total_weight_display').innerText = totalWeight.toFixed(2);
         document.getElementById('total_cost_display').innerText = totalCost.toFixed(2);
 
-        // Calculate Final Metrics
         let finalCp = 0;
         let finalCostPerKg = 0;
 
@@ -292,10 +308,46 @@
         document.getElementById('final_cp_display').innerText = finalCp.toFixed(2);
         document.getElementById('final_cost_kg_display').innerText = finalCostPerKg.toFixed(2);
 
-        // Update Hidden Inputs
         document.getElementById('hidden_total_weight').value = totalWeight;
         document.getElementById('hidden_final_cp').value = finalCp.toFixed(2);
         document.getElementById('hidden_final_cost_kg').value = finalCostPerKg.toFixed(2);
+
+        // TRIGGER MIXER UPDATE
+        updateMixer();
+    }
+
+    // --- NEW MIXER FUNCTION ---
+    function updateMixer() {
+        const formulaTotalWeight = parseFloat(document.getElementById('total_weight_display').innerText) || 0;
+        if (formulaTotalWeight === 0) return;
+
+        const bagSize = parseFloat(document.getElementById('mixer_bag_size').value) || 0;
+        const bagCount = parseFloat(document.getElementById('mixer_bag_count').value) || 0;
+        const productionTarget = bagSize * bagCount;
+
+        document.getElementById('mixer_total_production').innerText = productionTarget;
+
+        // Scaling Factor = Target / FormulaTotal
+        const ratio = productionTarget / formulaTotalWeight;
+
+        const tbody = document.getElementById('mixer_table_body');
+        tbody.innerHTML = '';
+
+        document.querySelectorAll('#calcTable tbody tr').forEach(row => {
+            const select = row.querySelector('.ingredient-select');
+            const name = select.options[select.selectedIndex].text;
+            const weight = parseFloat(row.querySelector('.weight-input').value) || 0;
+
+            if (name !== "-- Select --" && weight > 0) {
+                const requiredWeight = weight * ratio;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${name}</td>
+                    <td class="text-end fw-bold">${requiredWeight.toFixed(2)}</td>
+                `;
+                tbody.appendChild(tr);
+            }
+        });
     }
 
     function prepareSubmission() {

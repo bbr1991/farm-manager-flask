@@ -2921,10 +2921,20 @@ def add_egg_log():
 
         # 1. Get Feed Cost Info
         feed_item = db.execute("SELECT unit_cost, quantity, name FROM inventory WHERE id = ?", (feed_item_id,)).fetchone()
-        if not feed_item: raise Exception("Feed item not found.")
+        if not feed_item: 
+            raise Exception("Feed item not found.")
         
+        # --- SAFETY CHECK: PREVENT ZERO COST ---
+        if feed_item['unit_cost'] <= 0:
+            flash(f"Error: The feed '{feed_item['name']}' has a Unit Cost of ₦0.00. Please go to Inventory and update its price before logging production.", "danger")
+            return redirect(url_for('poultry_dashboard'))
+        
+        if feed_quantity_used > feed_item['quantity']:
+            flash(f"Error: Not enough feed in stock. You have {feed_item['quantity']} but tried to use {feed_quantity_used}.", "danger")
+            return redirect(url_for('poultry_dashboard'))
+
         # Calculate cost of feed used
-        cost_of_feed_today = feed_quantity_used * (feed_item['unit_cost'] or 0)
+        cost_of_feed_today = feed_quantity_used * feed_item['unit_cost']
         
         # 2. Get Egg Info
         eggs_item = db.execute("SELECT id, quantity, unit_cost FROM inventory WHERE name = 'Eggs'").fetchone()
@@ -2941,8 +2951,6 @@ def add_egg_log():
         if good_eggs <= 0: raise Exception("No good eggs produced.")
 
         # 4. WEIGHTED AVERAGE COST (The Golden Rule)
-        # New Value = Old Value + Cost of Feed Used
-        # New Qty = Old Qty + Good Eggs Produced
         new_total_value = current_egg_value + cost_of_feed_today
         new_total_qty = current_egg_qty + good_eggs
         new_unit_cost = new_total_value / new_total_qty if new_total_qty > 0 else 0
@@ -2960,10 +2968,6 @@ def add_egg_log():
         db.execute("UPDATE inventory SET quantity = ?, unit_cost = ? WHERE id = ?", (new_total_qty, new_unit_cost, eggs_item['id']))
 
         # 6. JOURNAL ENTRY (Asset Swap)
-        # Credit: Inventory - Feed (Value goes down)
-        # Debit: Inventory - Eggs (Value goes up)
-        # NO INCOME IS RECORDED HERE.
-        
         feed_asset_id = get_account_id('Inventory - Feed', 'Asset')
         egg_asset_id = get_account_id('Inventory - Eggs', 'Asset')
         
@@ -3180,6 +3184,61 @@ def update_feed_ingredient_price():
     except Exception as e:
         flash(f"Error: {e}", "danger")
     return redirect(url_for('feed_formulator'))
+# ==============================================================================
+# FEED INGREDIENT PRICING ROUTES
+# ==============================================================================
+
+@app.route('/fishery/feed/ingredients')
+@login_required
+@permission_required('manage_fishery')
+def manage_feed_ingredients():
+    db = get_db()
+    # Fetch all ingredients sorted by Category then Name
+    ingredients = db.execute("SELECT * FROM feed_ingredients ORDER BY category DESC, name ASC").fetchall()
+    return render_template('feed_ingredients.html', user=g.user, ingredients=ingredients)
+
+@app.route('/fishery/feed/ingredients/update', methods=['POST'])
+@login_required
+@permission_required('manage_fishery')
+def update_ingredient_price():
+    db = get_db()
+    try:
+        ing_id = int(request.form.get('ingredient_id'))
+        new_price = float(request.form.get('price_per_kg'))
+        
+        # Update the price in the database
+        db.execute("UPDATE feed_ingredients SET price_per_kg = ? WHERE id = ?", (new_price, ing_id))
+        db.commit()
+        
+        flash("Price updated successfully.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"Error updating price: {e}", "danger")
+        
+    return redirect(url_for('manage_feed_ingredients'))
+
+@app.route('/fishery/feed/ingredients/add', methods=['POST'])
+@login_required
+@permission_required('manage_fishery')
+def add_new_ingredient():
+    db = get_db()
+    try:
+        name = request.form.get('name')
+        cp = float(request.form.get('cp_percent'))
+        price = float(request.form.get('price_per_kg'))
+        category = request.form.get('category')
+        
+        db.execute("""
+            INSERT INTO feed_ingredients (name, cp_percent, price_per_kg, category, me_value)
+            VALUES (?, ?, ?, ?, 0)
+        """, (name, cp, price, category))
+        db.commit()
+        flash(f"New ingredient '{name}' added.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"Error adding ingredient: {e}", "danger")
+        
+    return redirect(url_for('manage_feed_ingredients'))
 # ==============================================================================
 # VETERINARY ASSISTANT ROUTES
 # ==============================================================================
