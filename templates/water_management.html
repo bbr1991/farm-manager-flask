@@ -2,6 +2,7 @@
 {% block title %}Water Production{% endblock %}
 
 {% block content %}
+<!-- HEADER -->
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2"><i class="bi bi-droplet-fill text-info"></i> Water Production</h1>
     <div>
@@ -14,34 +15,81 @@
     </div>
 </div>
 
-<!-- Rates Summary Card -->
+<!-- RATES SUMMARY CARD -->
 <div class="card shadow mb-4 border-left-info">
     <div class="card-body">
         <div class="row text-center">
-            <div class="col-md-3">
-                <small class="text-muted text-uppercase">Prod. Manager Rate</small>
-                <div class="h5 font-weight-bold">₦{{ settings.production_manager_rate }}/100</div>
+            <div class="col-md-3 border-end">
+                <small class="text-muted text-uppercase fw-bold">Prod. Manager</small>
+                <div class="h4 font-weight-bold text-dark mt-1">₦{{ settings.production_manager_rate }}/100</div>
+                <small class="text-xs text-gray-500">per 100 bundles</small>
+            </div>
+            <div class="col-md-3 border-end">
+                <small class="text-muted text-uppercase fw-bold">Selling Manager</small>
+                <div class="h4 font-weight-bold text-dark mt-1">₦{{ settings.selling_manager_rate }}/100</div>
+                <small class="text-xs text-gray-500">per 100 bundles</small>
+            </div>
+            <div class="col-md-3 border-end">
+                <small class="text-muted text-uppercase fw-bold">Carriage Rate</small>
+                <div class="h4 font-weight-bold text-dark mt-1">₦{{ settings.carriage_labor_rate }}/100</div>
+                <small class="text-xs text-gray-500">per 100 bundles</small>
             </div>
             <div class="col-md-3">
-                <small class="text-muted text-uppercase">Selling Manager Rate</small>
-                <div class="h5 font-weight-bold">₦{{ settings.selling_manager_rate }}/100</div>
-            </div>
-            <div class="col-md-3">
-                <small class="text-muted text-uppercase">Carriage Rate</small>
-                <div class="h5 font-weight-bold">₦{{ settings.carriage_labor_rate }}/sachet</div>
-            </div>
-            <div class="col-md-3">
-                <small class="text-muted text-uppercase">Promo Policy</small>
-                <div class="h5 font-weight-bold text-success">+{{ settings.promo_sachets_rate }} per 100</div>
+                <small class="text-muted text-uppercase fw-bold">Promo Policy</small>
+                <div class="h4 font-weight-bold text-success mt-1">+{{ settings.promo_sachets_rate }}</div>
+                <small class="text-xs text-gray-500">free per 100 bundles</small>
             </div>
         </div>
     </div>
 </div>
 
-<!-- History Table -->
+<!-- KPI CARDS -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card bg-primary text-white shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">Produced Today</div>
+                        <div class="h2 mb-0 font-weight-bold">{{ stats.produced_today }}</div>
+                    </div>
+                    <div class="col-auto"><i class="bi bi-droplet-half fa-2x text-gray-300" style="font-size: 2rem; opacity: 0.5;"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-success text-white shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">Last 7 Days</div>
+                        <div class="h2 mb-0 font-weight-bold">{{ stats.produced_last_7_days }}</div>
+                    </div>
+                    <div class="col-auto"><i class="bi bi-calendar-check fa-2x text-gray-300" style="font-size: 2rem; opacity: 0.5;"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-info text-white shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">Stock Value</div>
+                        <div class="h2 mb-0 font-weight-bold">₦{{ '{:,.0f}'.format(stats.total_stock_value) }}</div>
+                    </div>
+                    <div class="col-auto"><i class="bi bi-cash-stack fa-2x text-gray-300" style="font-size: 2rem; opacity: 0.5;"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- HISTORY TABLE -->
 <div class="card shadow-sm">
-    <div class="card-header bg-light">
-        <h5 class="mb-0">Production Log</h5>
+    <div class="card-header bg-white py-3 d-flex flex-row align-items-center justify-content-between">
+        <h6 class="m-0 font-weight-bold text-primary">Recent Production History</h6>
     </div>
     <div class="card-body">
         <div class="table-responsive">
@@ -50,11 +98,11 @@
                     <tr>
                         <th>Date</th>
                         <th>Product</th>
-                        <th class="text-end">Bundles</th>
+                        <th class="text-end">Output (Bundles)</th>
                         <th class="text-end">Labor Cost</th>
                         <th class="text-end">Material Cost</th>
                         <th class="text-end">Total Cost</th>
-                        <th class="text-end">Cost/Bundle</th>
+                        <th class="text-end">Unit Cost</th>
                         <th class="text-center">Actions</th>
                     </tr>
                 </thead>
@@ -62,32 +110,32 @@
                     {% for log in production_logs %}
                     <tr>
                         <td>{{ log.production_date }}</td>
-                        <td>{{ log.product_name }}</td>
+                        <td><span class="badge bg-secondary">{{ log.product_name }}</span></td>
                         <td class="text-end fw-bold">{{ log.bundles_produced }}</td>
                         <td class="text-end">
                             {% set labor = (log.production_labor_cost or 0) + (log.sales_commission or 0) + (log.carriage_cost or 0) %}
-                            ₦{{ '{:,.0f}'.format(labor) }}
+                            <span class="text-muted">₦{{ '{:,.0f}'.format(labor) }}</span>
                         </td>
                         <td class="text-end text-info">₦{{ '{:,.0f}'.format(log.material_cost or 0) }}</td>
                         <td class="text-end fw-bold text-danger">₦{{ '{:,.0f}'.format(log.total_cost or 0) }}</td>
                         <td class="text-end small">₦{{ '{:,.2f}'.format(log.cost_per_unit or 0) }}</td>
                         <td class="text-center">
-                            <div class="btn-group">
-                                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                                    Action
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-light border dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                    <i class="bi bi-three-dots"></i>
                                 </button>
-                                <ul class="dropdown-menu">
+                                <ul class="dropdown-menu dropdown-menu-end shadow">
                                     <li>
                                         <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#editLogModal"
                                            data-id="{{ log.id }}" data-bundles="{{ log.bundles_produced }}">
-                                           <i class="bi bi-pencil"></i> Edit Quantity
+                                           <i class="bi bi-pencil me-2 text-warning"></i> Edit Quantity
                                         </a>
                                     </li>
                                     <li><hr class="dropdown-divider"></li>
                                     <li>
                                         <a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#deleteLogModal"
                                            data-id="{{ log.id }}">
-                                           <i class="bi bi-trash"></i> Delete
+                                           <i class="bi bi-trash me-2"></i> Delete Log
                                         </a>
                                     </li>
                                 </ul>
@@ -95,7 +143,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="8" class="text-center p-4">No production logged yet.</td></tr>
+                    <tr><td colspan="8" class="text-center p-5 text-muted">No production logs found. Start by clicking "Log Production".</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -103,13 +151,17 @@
     </div>
 </div>
 
+<!-- ================= MODALS ================= -->
+
 <!-- MODAL: Log Production -->
 <div class="modal fade" id="logProductionModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <form action="{{ url_for('add_water_production_log') }}" method="POST">
-                <div class="modal-header"><h5 class="modal-title">Log Production Run</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header bg-primary text-white"><h5 class="modal-title"><i class="bi bi-plus-circle"></i> Log Production Run</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
+                    
+                    <!-- Basic Info -->
                     <div class="mb-3">
                         <label>Date</label>
                         <input type="date" name="production_date" class="form-control" value="{{ today_date }}" required>
@@ -122,29 +174,53 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="mb-3">
-                        <label class="fw-bold">Output: Bundles Produced</label>
-                        <input type="number" name="bundles_produced" class="form-control border-primary" placeholder="e.g. 500" required>
+                    <div class="mb-3 p-3 bg-light border rounded">
+                        <label class="fw-bold text-primary">Output: Bundles Produced</label>
+                        <input type="number" name="bundles_produced" class="form-control form-control-lg border-primary" placeholder="e.g. 500" required>
+                        <div class="form-text small">Labor calculated based on Settings (Per 100 Bundles).</div>
                     </div>
                     
                     <hr>
-                    <h6 class="text-muted">Material Usage (Inputs)</h6>
-                    <div class="row">
-                        <div class="col-6 mb-3">
-                            <label class="small">Sachet Roll Used (Kg)</label>
-                            <input type="number" step="0.1" name="sachet_kg_used" class="form-control" placeholder="0.0">
+                    <h6 class="text-muted text-uppercase small fw-bold">Material Usage (Select Item & Kg Used)</h6>
+                    
+                    <!-- INPUT 1: SACHET LEATHER -->
+                    <div class="row mb-2 align-items-end">
+                        <div class="col-7">
+                            <label class="small">Sachet/Nylon Roll</label>
+                            <select name="sachet_item_id" class="form-select form-select-sm">
+                                <option value="">-- Select Material --</option>
+                                {% for item in raw_materials %}
+                                <option value="{{ item.id }}">{{ item.name }} (₦{{ item.unit_cost }}/kg)</option>
+                                {% endfor %}
+                            </select>
                         </div>
-                        <div class="col-6 mb-3">
-                            <label class="small">Packing Roll Used (Kg)</label>
-                            <input type="number" step="0.1" name="packing_kg_used" class="form-control" placeholder="0.0">
+                        <div class="col-5">
+                            <label class="small">Kg Used</label>
+                            <input type="number" step="0.01" name="sachet_kg_used" class="form-control form-control-sm" placeholder="0.0">
                         </div>
                     </div>
-                    <div class="alert alert-info small">
-                        System will calculate Material Cost based on current inventory price per Kg.
+
+                    <!-- INPUT 2: PACKING LEATHER -->
+                    <div class="row mb-3 align-items-end">
+                        <div class="col-7">
+                            <label class="small">Packing/Bagging Roll</label>
+                            <select name="packing_item_id" class="form-select form-select-sm">
+                                <option value="">-- Select Material --</option>
+                                {% for item in raw_materials %}
+                                <option value="{{ item.id }}">{{ item.name }} (₦{{ item.unit_cost }}/kg)</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-5">
+                            <label class="small">Kg Used</label>
+                            <input type="number" step="0.01" name="packing_kg_used" class="form-control form-control-sm" placeholder="0.0">
+                        </div>
                     </div>
+
                 </div>
                 <div class="modal-footer">
-                    <button type="submit" class="btn btn-primary">Save & Calculate</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary w-100">Save & Calculate</button>
                 </div>
             </form>
         </div>
@@ -156,36 +232,62 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form action="{{ url_for('update_water_settings') }}" method="POST">
-                <div class="modal-header bg-secondary text-white"><h5 class="modal-title">Settings</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header bg-secondary text-white"><h5 class="modal-title"><i class="bi bi-gear-fill"></i> Settings & Rates</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
-                    <h6 class="text-primary">Labor Rates</h6>
-                    <div class="mb-2">
-                        <label class="small">Production Manager (Per 100 Sachets)</label>
-                        <input type="number" step="0.01" name="production_manager_rate" class="form-control" value="{{ settings.production_manager_rate }}">
+                    <div class="alert alert-warning small d-flex align-items-center">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <div><strong>Important:</strong> All rates below are calculated per <strong>100 BUNDLES</strong> produced.</div>
                     </div>
-                    <div class="mb-2">
-                        <label class="small">Selling Manager (Per 100 Sachets)</label>
-                        <input type="number" step="0.01" name="selling_manager_rate" class="form-control" value="{{ settings.selling_manager_rate }}">
+                    
+                    <h6 class="text-primary border-bottom pb-2 mb-3">Labor Rates (Per 100 Bundles)</h6>
+                    
+                    <div class="mb-3 row">
+                        <label class="col-sm-7 col-form-label small">Production Manager</label>
+                        <div class="col-sm-5">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">₦</span>
+                                <input type="number" step="0.01" name="production_manager_rate" class="form-control" value="{{ settings.production_manager_rate }}">
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-2">
-                        <label class="small">Carriage Labor (Per 1 Sachet)</label>
-                        <input type="number" step="0.01" name="carriage_labor_rate" class="form-control" value="{{ settings.carriage_labor_rate }}">
+                    <div class="mb-3 row">
+                        <label class="col-sm-7 col-form-label small">Selling Manager</label>
+                        <div class="col-sm-5">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">₦</span>
+                                <input type="number" step="0.01" name="selling_manager_rate" class="form-control" value="{{ settings.selling_manager_rate }}">
+                            </div>
+                        </div>
                     </div>
-                    <hr>
-                    <h6 class="text-success">Sales Promo</h6>
-                    <div class="mb-3">
-                        <label class="small">Promo Sachets (Free per 100 bought)</label>
-                        <input type="number" name="promo_sachets_rate" class="form-control" value="{{ settings.promo_sachets_rate }}">
+                    <div class="mb-3 row">
+                        <label class="col-sm-7 col-form-label small">Carriage/Loading</label>
+                        <div class="col-sm-5">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">₦</span>
+                                <input type="number" step="0.01" name="carriage_labor_rate" class="form-control" value="{{ settings.carriage_labor_rate }}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <h6 class="text-success border-bottom pb-2 mb-3 mt-4">Sales Promo</h6>
+                    <div class="mb-3 row">
+                        <label class="col-sm-7 col-form-label small">Free Sachets (Per 100 Bundles)</label>
+                        <div class="col-sm-5">
+                            <input type="number" name="promo_sachets_rate" class="form-control form-control-sm" value="{{ settings.promo_sachets_rate }}">
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="submit" class="btn btn-secondary">Save Settings</button>
+                    <button type="submit" class="btn btn-dark w-100">Save Rates</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
-
+<div class="mb-2">
+                        <label class="small">Carriage/Loading (Per 100 Bundles)</label>
+                        <input type="number" step="0.01" name="carriage_labor_rate" class="form-control" value="{{ settings.carriage_labor_rate }}">
+                    </div>
 <!-- MODAL: Edit Log -->
 <div class="modal fade" id="editLogModal" tabindex="-1">
     <div class="modal-dialog">
@@ -201,12 +303,12 @@
                         <label>Reason for Edit</label>
                         <input type="text" name="notes" class="form-control" placeholder="e.g. Mistyped number">
                     </div>
-                    <div class="alert alert-warning small">
-                        Labor costs will be updated automatically. Material cost remains unchanged.
+                    <div class="alert alert-info small">
+                        Labor costs will be updated automatically. <br><strong>Note:</strong> Material cost remains unchanged.
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="submit" class="btn btn-primary">Update Record</button>
+                    <button type="submit" class="btn btn-warning">Update Record</button>
                 </div>
             </form>
         </div>
@@ -218,16 +320,17 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form id="deleteLogForm" method="POST">
-                <div class="modal-header bg-danger text-white"><h5 class="modal-title">Delete Record?</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header bg-danger text-white"><h5 class="modal-title">Delete Record?</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
-                    <p>Are you sure you want to delete this production record?</p>
+                    <p class="lead">Are you sure you want to delete this production record?</p>
                     <ul class="text-danger small">
-                        <li>The produced bundles will be removed from Stock.</li>
+                        <li>The produced bundles will be removed from Inventory Stock.</li>
                         <li>The Labor & Material costs will be removed from Reports.</li>
                     </ul>
                 </div>
                 <div class="modal-footer">
-                    <button type="submit" class="btn btn-danger">Yes, Delete</button>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Yes, Delete Permanently</button>
                 </div>
             </form>
         </div>
