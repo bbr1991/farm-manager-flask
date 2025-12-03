@@ -731,16 +731,14 @@ def poultry_dashboard():
 def water_dashboard():
     db = get_db()
     
-    # 1. Fetch Water Settings (The missing part causing your error)
+    # 1. Fetch Settings
     settings = db.execute("SELECT * FROM water_settings WHERE id = 1").fetchone()
-    
-    # If settings don't exist yet (first time run), create default
     if not settings:
-        db.execute("INSERT INTO water_settings (production_manager_rate, selling_manager_rate, carriage_labor_rate, leather_yield_per_kg) VALUES (0, 0, 0, 0)")
+        db.execute("INSERT INTO water_settings DEFAULT VALUES")
         db.commit()
         settings = db.execute("SELECT * FROM water_settings WHERE id = 1").fetchone()
 
-    # 2. Calculate KPI Stats (Your existing logic)
+    # 2. Stats
     stats_row = db.execute("""
         SELECT 
             (SELECT COALESCE(SUM(quantity * sale_price), 0) FROM inventory WHERE category='Finished Goods') as total_stock_value, 
@@ -756,7 +754,7 @@ def water_dashboard():
         'produced_last_7_days': stats_row['produced_last_7_days'] or 0
     }
     
-    # 3. Fetch Production Logs (With product names)
+    # 3. Logs
     production_logs = db.execute("""
         SELECT wpl.*, wp.name as product_name
         FROM water_production_log wpl 
@@ -764,18 +762,21 @@ def water_dashboard():
         ORDER BY wpl.production_date DESC, wpl.id DESC
     """).fetchall()
     
-    # 4. Fetch Dropdown Data
-    water_materials = db.execute("SELECT * FROM inventory WHERE name LIKE '%Leather%' OR name LIKE '%Packing%' OR category = 'Water Production' AND quantity > 0").fetchall()
+    # 4. Fetch Dropdowns
     water_products = db.execute("SELECT * FROM water_products ORDER BY name ASC").fetchall()
+    
+    # --- NEW: Fetch ALL Raw Materials for the Dropdown Selector ---
+    # We get anything that is NOT a finished good, so you can find your leather.
+    raw_materials = db.execute("SELECT * FROM inventory WHERE category != 'Finished Goods' AND quantity > 0 ORDER BY name ASC").fetchall()
 
     return render_template(
         'water_management.html', 
         user=g.user, 
         stats=stats, 
-        settings=settings,  # <--- THIS IS WHAT WAS MISSING
+        settings=settings, 
         production_logs=production_logs,
-        water_materials=water_materials,
         water_products=water_products,
+        raw_materials=raw_materials, # <--- PASSING THIS TO HTML
         today_date=date.today().strftime('%Y-%m-%d')
     )
 @app.route('/contacts')
@@ -3796,7 +3797,7 @@ def add_water_product():
 
     return redirect(url_for('water_dashboard'))
 # ==============================================================================
-# FINAL WATER PRODUCTION LOGIC (Replace previous versions with this)
+# UPDATED WATER LOGIC (Per 100 Bundles Basis)
 # ==============================================================================
 
 @app.route('/water/settings', methods=['POST'])
@@ -3805,14 +3806,15 @@ def add_water_product():
 def update_water_settings():
     db = get_db()
     try:
+        # These inputs are now treated as "Per 100 Bundles"
         pm_rate = float(request.form.get('production_manager_rate', 0))
         sm_rate = float(request.form.get('selling_manager_rate', 0))
         cl_rate = float(request.form.get('carriage_labor_rate', 0))
         
-        # New: Promo Rate
+        # Promo Rate (e.g., 5 promos per 100 bundles)
         promo_rate = int(request.form.get('promo_sachets_rate', 0))
 
-        # Ensure row 1 exists (just in case)
+        # Ensure row 1 exists
         check = db.execute("SELECT id FROM water_settings WHERE id = 1").fetchone()
         if not check:
             db.execute("INSERT INTO water_settings (id) VALUES (1)")
@@ -3824,103 +3826,114 @@ def update_water_settings():
             WHERE id = 1
         """, (pm_rate, sm_rate, cl_rate, promo_rate))
         db.commit()
-        flash("Rates & Promo Settings Updated!", "success")
+        flash("Rates Updated! (All rates are now based on 100 Bundles)", "success")
     except Exception as e:
         db.rollback()
         flash(f"Error: {e}", "danger")
     return redirect(url_for('water_dashboard'))
-
 @app.route('/water/production/log', methods=['POST'])
 @login_required
 @permission_required('log_water_production')
 def add_water_production_log():
     db = get_db()
     try:
+        # --- 1. GET FORM DATA ---
         date = request.form.get('production_date')
         product_id = int(request.form.get('product_id'))
-        bundles_produced = float(request.form.get('bundles_produced'))
         
-        # Inputs for Materials Used
-        sachet_kg_used = float(request.form.get('sachet_kg_used', 0))
-        packing_kg_used = float(request.form.get('packing_kg_used', 0))
+        # This is the GROSS production (Total bundles coming off the machine)
+        gross_bundles_produced = float(request.form.get('bundles_produced'))
+        
+        sachet_id = request.form.get('sachet_item_id')
+        packing_id = request.form.get('packing_item_id')
+        sachet_kg = float(request.form.get('sachet_kg_used') or 0)
+        packing_kg = float(request.form.get('packing_kg_used') or 0)
 
-        # 1. Fetch Settings
+        # --- 2. GET RATES ---
         settings = db.execute("SELECT * FROM water_settings WHERE id = 1").fetchone()
-        if not settings:
-            flash("Please save Settings first.", "warning")
-            return redirect(url_for('water_dashboard'))
-
-        # 2. LABOR CALCULATIONS
-        sachets_per_bundle = 20 # Standard
-        total_sachets = bundles_produced * sachets_per_bundle
-        hundred_sachets = total_sachets / 100
-
-        pm_cost = hundred_sachets * (settings['production_manager_rate'] or 0)
-        sm_cost = hundred_sachets * (settings['selling_manager_rate'] or 0)
         
-        # Assuming Carriage is per Sachet based on your description "Carraige out labour per suchese"
-        carriage_cost = total_sachets * (settings['carriage_labor_rate'] or 0)
+        pm_rate = settings['production_manager_rate'] or 0
+        sm_rate = settings['selling_manager_rate'] or 0
+        cl_rate = settings['carriage_labor_rate'] or 0 
+        promo_rate = settings['promo_sachets_rate'] or 0 # e.g., 8 sachets per 100 bundles
+
+        # --- 3. CALCULATE VOLUME & PROMOS ---
+        units_of_100 = gross_bundles_produced / 100
+        
+        # Calculate Promo Sachets (e.g. 4.65 units * 8 = 37.2 sachets)
+        total_promo_sachets = units_of_100 * promo_rate
+        
+        # Convert Promo Sachets to Bundle Equivalents (20 sachets = 1 bundle)
+        promo_bundles_equivalent = total_promo_sachets / 20
+        
+        # Calculate Sellable Bundles (This is your denominator)
+        # Sellable = Total Produced - Promos Given Away
+        # Actually, in your logic, the 'bundles_produced' entered is likely the TOTAL count.
+        # So we subtract the promo amount to find what enters inventory as sellable.
+        # Wait, usually promos are EXTRA or Part of total? 
+        # Based on your example: "465 - 37.2 = 427.8", you imply the promos are DEDUCTED from the count.
+        
+        sellable_bundles = gross_bundles_produced - promo_bundles_equivalent
+
+        # --- 4. CALCULATE LABOR COST (On Gross Production) ---
+        # You pay labor on everything produced/carried, including the free ones.
+        pm_cost = units_of_100 * pm_rate
+        sm_cost = units_of_100 * sm_rate
+        carriage_cost = units_of_100 * cl_rate
 
         total_labor_cost = pm_cost + sm_cost + carriage_cost
 
-        # 3. MATERIAL COST CALCULATIONS
+        # --- 5. MATERIAL COST ---
         total_material_cost = 0
         
-        # A. Sachet Leather Cost
-        if sachet_kg_used > 0:
-            # Find Sachet Leather in Inventory
-            sachet_item = db.execute("SELECT id, unit_cost, quantity FROM inventory WHERE name LIKE '%Sachet%' OR name LIKE '%Printed%' LIMIT 1").fetchone()
-            if sachet_item:
-                cost = sachet_kg_used * (sachet_item['unit_cost'] or 0)
+        if sachet_id and sachet_kg > 0:
+            item = db.execute("SELECT id, unit_cost FROM inventory WHERE id = ?", (sachet_id,)).fetchone()
+            if item:
+                cost = sachet_kg * item['unit_cost']
                 total_material_cost += cost
-                # Deduct Inventory
-                db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (sachet_kg_used, sachet_item['id']))
-                # Log Inventory Usage
-                db.execute("INSERT INTO inventory_log (log_date, inventory_item_id, quantity_used, cost_of_usage, created_by_user_id) VALUES (?, ?, ?, ?, ?)",
-                           (date, sachet_item['id'], sachet_kg_used, cost, g.user.id))
-            else:
-                flash("Warning: Could not find item named 'Sachet Leather' in inventory. Cost not calculated.", "warning")
+                db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (sachet_kg, item['id']))
+                db.execute("INSERT INTO inventory_log (log_date, inventory_item_id, quantity_used, cost_of_usage, created_by_user_id) VALUES (?, ?, ?, ?, ?)", (date, item['id'], sachet_kg, cost, g.user.id))
 
-        # B. Packing Leather Cost
-        if packing_kg_used > 0:
-            # Find Packing Leather in Inventory
-            packing_item = db.execute("SELECT id, unit_cost, quantity FROM inventory WHERE name LIKE '%Packing%' OR name LIKE '%Parking%' LIMIT 1").fetchone()
-            if packing_item:
-                cost = packing_kg_used * (packing_item['unit_cost'] or 0)
+        if packing_id and packing_kg > 0:
+            item = db.execute("SELECT id, unit_cost FROM inventory WHERE id = ?", (packing_id,)).fetchone()
+            if item:
+                cost = packing_kg * item['unit_cost']
                 total_material_cost += cost
-                # Deduct Inventory
-                db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (packing_kg_used, packing_item['id']))
-                # Log Inventory Usage
-                db.execute("INSERT INTO inventory_log (log_date, inventory_item_id, quantity_used, cost_of_usage, created_by_user_id) VALUES (?, ?, ?, ?, ?)",
-                           (date, packing_item['id'], packing_kg_used, cost, g.user.id))
-            else:
-                flash("Warning: Could not find item named 'Packing Leather' in inventory. Cost not calculated.", "warning")
+                db.execute("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", (packing_kg, item['id']))
+                db.execute("INSERT INTO inventory_log (log_date, inventory_item_id, quantity_used, cost_of_usage, created_by_user_id) VALUES (?, ?, ?, ?, ?)", (date, item['id'], packing_kg, cost, g.user.id))
 
-        # 4. TOTAL COST & PROMO DEDUCTION
-        # NOTE: Promos don't usually reduce cost, they just reduce stock without revenue. 
-        # But we need to account that the leather was used for promos too.
-        # The calculation above (Leather Used) covers promos because you weighed the total leather used.
-        
+        # --- 6. TOTAL & UNIT COST (The Fix) ---
         grand_total_cost = total_labor_cost + total_material_cost
-        cost_per_unit = grand_total_cost / bundles_produced if bundles_produced > 0 else 0
+        
+        # CRITICAL CHANGE: Divide Total Cost by SELLABLE Bundles, not Gross Bundles.
+        # This loads the cost of the free items onto the items you will actually sell.
+        if sellable_bundles > 0:
+            cost_per_bundle = grand_total_cost / sellable_bundles
+        else:
+            cost_per_bundle = 0
 
-        # 5. Save Log
+        # --- 7. SAVE LOG ---
+        # We record the GROSS quantity for records, but the COST is higher per unit.
         db.execute("""
             INSERT INTO water_production_log 
             (production_date, product_id, quantity_produced, bundles_produced, 
              production_labor_cost, sales_commission, carriage_cost, material_cost, total_cost, cost_per_unit)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (date, product_id, total_sachets, bundles_produced, pm_cost, sm_cost, carriage_cost, total_material_cost, grand_total_cost, cost_per_unit))
+        """, (date, product_id, gross_bundles_produced * 20, gross_bundles_produced, pm_cost, sm_cost, carriage_cost, total_material_cost, grand_total_cost, cost_per_bundle))
         
-        # 6. Add Finished Goods to Stock
-        db.execute("UPDATE water_products SET quantity = quantity + ? WHERE id = ?", (bundles_produced, product_id))
+        # --- 8. UPDATE INVENTORY ---
+        # IMPORTANT: Do we add 465 or 427.8 to stock?
+        # If the promo items are given away immediately at the point of production, they never enter "Finished Goods Inventory".
+        # So we should only add the SELLABLE amount to stock.
+        db.execute("UPDATE water_products SET quantity = quantity + ? WHERE id = ?", (sellable_bundles, product_id))
 
         db.commit()
-        flash(f"Produced {bundles_produced} bundles. Labor: ₦{total_labor_cost:,.0f}. Material Cost: ₦{total_material_cost:,.0f}", "success")
+        
+        flash(f"Produced {gross_bundles_produced} Gross. Promos: {promo_bundles_equivalent:.1f} bundles. Sellable Stock Added: {sellable_bundles:.1f}. Cost: ₦{cost_per_bundle:,.2f}/bundle", "success")
 
     except Exception as e:
         db.rollback()
-        flash(f"Error logging production: {e}", "danger")
+        flash(f"Error: {e}", "danger")
     
     return redirect(url_for('water_dashboard'))
 # ==============================================================================
